@@ -3,12 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>语音转写 · 专业修复版（模型加载优化）</title>
+    <title>语音转写 · 专业版（进度条修复）</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <!-- Transformers.js 需确保正确加载 -->
+    <!-- Transformers.js 使用 CDN（也可替换为本地路径） -->
     <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0"></script>
     <style>
-        /* 样式与之前相同，增加进度条样式 */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -72,7 +71,7 @@
         #fileInput { display: none; }
         .model-loading { font-size: 0.85rem; color: #2563eb; margin-top: 8px; }
         .progress-bar {
-            width: 100%; height: 6px; background: #e2e8f0; border-radius: 10px; margin-top: 10px; overflow: hidden;
+            width: 100%; height: 6px; background: #e2e8f0; border-radius: 10px; margin-top: 10px; overflow: hidden; display: none;
         }
         .progress-fill {
             height: 100%; background: #4f46e5; width: 0%; transition: width 0.2s;
@@ -137,7 +136,7 @@
             <p>点击或拖拽上传音频文件</p>
             <p style="font-size:0.8rem; color:#64748b;">支持 mp3, m4a, wav, webm 等 (离线识别，首次需下载模型)</p>
             <div id="modelStatus" class="model-loading">⚡ 模型未加载，点击上传后自动加载</div>
-            <div id="progressContainer" class="progress-bar" style="display: none;">
+            <div id="progressContainer" class="progress-bar">
                 <div id="progressFill" class="progress-fill"></div>
             </div>
         </div>
@@ -483,7 +482,7 @@
                 liveTranscriptEl.innerText = '正在聆听...';
             }
 
-            // ---------- 文件上传离线识别 (Transformers.js Whisper) 修复版 ----------
+            // ---------- 文件上传离线识别 (Transformers.js Whisper) 修复进度条 ----------
             async function loadWhisperPipeline() {
                 if (pipeline) return pipeline;
                 if (isModelLoading) {
@@ -491,28 +490,35 @@
                     return null;
                 }
                 isModelLoading = true;
-                modelStatus.innerText = '⏳ 正在下载/加载模型（首次需下载约150MB，请耐心等待）...';
+                modelStatus.innerText = '⏳ 正在加载模型（首次需下载约150MB，请耐心等待）...';
                 progressContainer.style.display = 'block';
                 progressFill.style.width = '0%';
 
                 try {
-                    // 确保 transformers 已挂载
+                    // 检查 Transformers.js 是否可用
                     if (!self.transformers || !self.transformers.pipeline) {
-                        throw new Error('Transformers.js 未正确加载，请刷新页面重试。');
+                        throw new Error('Transformers.js 库未正确加载，请检查网络或刷新页面。');
                     }
                     const { pipeline: transformersPipeline } = self.transformers;
-                    
-                    // 使用进度回调
+
+                    // 使用进度回调，兼容各种状态
                     pipeline = await transformersPipeline('automatic-speech-recognition', 'Xenova/whisper-tiny', {
                         progress_callback: (progress) => {
-                            if (progress.status === 'downloading' && progress.total) {
-                                const percent = (progress.loaded / progress.total) * 100;
-                                progressFill.style.width = percent + '%';
-                                modelStatus.innerText = `⏳ 下载中 ${Math.round(percent)}%`;
-                            } else if (progress.status === 'done') {
+                            console.log('Progress event:', progress); // 调试时可查看控制台
+                            // 根据实际 progress 对象调整状态判断
+                            if (progress.status === 'progress' || progress.status === 'downloading') {
+                                if (progress.total) {
+                                    const percent = (progress.loaded / progress.total) * 100;
+                                    progressFill.style.width = percent + '%';
+                                    modelStatus.innerText = `⏳ 下载中 ${Math.round(percent)}%`;
+                                }
+                            } else if (progress.status === 'ready' || progress.status === 'done' || progress.status === 'success') {
                                 progressFill.style.width = '100%';
                                 modelStatus.innerText = '✅ 模型已就绪，可上传音频';
-                                setTimeout(() => { progressContainer.style.display = 'none'; }, 1000);
+                                // 延迟隐藏进度条，让用户看到完成状态
+                                setTimeout(() => {
+                                    progressContainer.style.display = 'none';
+                                }, 1500);
                             }
                         }
                     });
@@ -530,17 +536,14 @@
             }
 
             async function getPipeline() {
-                // 如果已经加载过且成功，直接返回
                 if (pipeline) return pipeline;
-                // 否则尝试加载
                 return await loadWhisperPipeline();
             }
 
-            // 预加载模型（用户点击上传区域时触发，也可在页面加载后自动开始）
+            // 点击上传区域时，如果模型未加载则触发加载
             uploadArea.addEventListener('click', async () => {
-                // 如果模型未加载，先尝试加载（但不上传文件）
                 if (!pipeline && !isModelLoading) {
-                    showToast('开始加载模型，请稍候...');
+                    // 先尝试加载模型，不阻塞文件选择
                     loadWhisperPipeline().catch(() => {});
                 }
                 // 仍然打开文件选择
@@ -609,7 +612,7 @@
                 showToast(`语言切换为 ${lang === 'zh-CN' ? '中文' : '英文'}`);
             });
 
-            // 修复后的全部导出功能
+            // 全部导出功能（已修复）
             exportAllBtn.addEventListener('click', async () => {
                 try {
                     const records = await getAllRecordings();
@@ -646,7 +649,7 @@
                 showToast('IndexedDB初始化失败，存储将不可用');
             });
 
-            // 预加载模型（可选，提升用户体验）
+            // 预加载模型（提升体验）
             setTimeout(() => {
                 if (self.transformers?.pipeline) {
                     loadWhisperPipeline().catch(() => {});

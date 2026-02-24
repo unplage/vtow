@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>语音转写 · 离线版 (Whisper)</title>
+    <title>语音转写 · 实时+离线版 (多源支持)</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <!-- Transformers.js 2.6.0 -->
+    <!-- Transformers.js -->
     <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -17,743 +17,768 @@
         .app-container {
             width: 100%; max-width: 480px; background: white; border-radius: 32px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.08), 0 6px 12px rgba(0,0,0,0.05);
-            overflow: hidden; backdrop-filter: blur(2px); border: 1px solid rgba(255,255,255,0.3);
+            overflow: hidden;
         }
         .header { padding: 24px 24px 16px 24px; background: white; border-bottom: 1px solid #f0f2f5; }
         .header h1 {
-            font-size: 1.9rem; font-weight: 600; letter-spacing: -0.02em;
+            font-size: 1.6rem; font-weight: 600; letter-spacing: -0.02em;
             background: linear-gradient(145deg, #0f172a, #334155); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            margin-bottom: 6px; display: flex; align-items: center; gap: 8px;
+            margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
         }
-        .header h1 i { background: #eef2ff; padding: 8px; border-radius: 18px; color: #4f46e5; font-size: 1.4rem; -webkit-text-fill-color: #4f46e5; }
-        .lang-selector {
-            display: flex; gap: 10px; margin-top: 12px; background: #f8fafc; padding: 6px; border-radius: 48px; border: 1px solid #e2e8f0;
+        .mode-tabs {
+            display: flex; gap: 8px; margin-bottom: 12px; background: #f8fafc; padding: 6px; border-radius: 48px; border: 1px solid #e2e8f0;
         }
-        .lang-option {
-            flex: 1; text-align: center; padding: 10px 6px; font-size: 1rem; font-weight: 500; border-radius: 40px;
+        .mode-tab {
+            flex: 1; text-align: center; padding: 10px 6px; font-size: 0.9rem; font-weight: 500; border-radius: 40px;
             background: transparent; border: none; color: #64748b; transition: all 0.2s ease; cursor: pointer;
         }
-        .lang-option.active { background: #ffffff; color: #0f172a; box-shadow: 0 4px 10px rgba(0,0,0,0.03); font-weight: 600; border: 0.5px solid #d9e2ef; }
+        .mode-tab.active { background: #ffffff; color: #0f172a; box-shadow: 0 4px 10px rgba(0,0,0,0.03); font-weight: 600; }
+        
+        .source-selector {
+            display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px;
+        }
+        .source-btn {
+            padding: 6px 12px; border-radius: 20px; border: 1px solid #e2e8f0;
+            background: #f8fafc; font-size: 0.75rem; cursor: pointer; transition: all 0.2s;
+        }
+        .source-btn.active { background: #4f46e5; color: white; border-color: #4f46e5; }
+        .source-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        
         .live-card {
             background: #ffffff; margin: 20px 24px; padding: 24px 20px; border-radius: 28px;
             box-shadow: inset 0 2px 10px rgba(0,0,0,0.02), 0 8px 18px -6px rgba(0,20,40,0.12);
             border: 1px solid #ffffff80; min-height: 160px; display: flex; flex-direction: column;
         }
         .transcript-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
-        .transcript-label i { font-size: 0.9rem; }
         .live-transcript {
-            font-size: 1.3rem; line-height: 1.5; font-weight: 420; color: #0b1e33; word-break: break-word;
-            white-space: pre-wrap; flex: 1; min-height: 80px; max-height: 240px; overflow-y: auto; padding-right: 8px; scrollbar-width: thin;
+            font-size: 1.2rem; line-height: 1.5; font-weight: 420; color: #0b1e33; word-break: break-word;
+            white-space: pre-wrap; flex: 1; min-height: 80px; max-height: 240px; overflow-y: auto;
         }
         .audio-meter {
             display: flex; gap: 2px; height: 20px; align-items: flex-end; margin-top: 8px; opacity: 0; transition: opacity 0.3s;
         }
-        .audio-bar {
-            width: 4px; background: #4f46e5; border-radius: 2px; transition: height 0.1s;
-        }
+        .audio-bar { width: 4px; background: #4f46e5; border-radius: 2px; transition: height 0.1s; }
         .status-badge {
             align-self: flex-end; font-size: 0.75rem; padding: 6px 14px; background: #f1f4f9; border-radius: 40px;
             color: #475569; margin-top: 12px; display: inline-flex; align-items: center; gap: 6px;
         }
         .status-badge.recording { background: #fee2e2; color: #b91c1c; }
-        .status-badge i { font-size: 0.7rem; }
+        .status-badge.processing { background: #fef3c7; color: #92400e; }
+        
         .control-panel { display: flex; justify-content: space-around; padding: 8px 24px 24px 24px; gap: 12px; flex-wrap: wrap; }
         .ctrl-btn {
             flex: 1; background: #fefefe; border: 1px solid #e9edf2; border-radius: 56px; padding: 16px 0;
             font-size: 1rem; font-weight: 550; color: #1e293b; box-shadow: 0 4px 8px rgba(0,0,0,0.02);
-            transition: all 0.15s ease; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; backdrop-filter: blur(2px);
+            transition: all 0.15s ease; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
         }
         .ctrl-btn:active { background: #f1f5f9; transform: scale(0.97); }
-        .ctrl-btn.primary { background: #1e293b; border-color: #1e293b; color: white; box-shadow: 0 10px 18px -8px #1e293b80; }
+        .ctrl-btn.primary { background: #1e293b; border-color: #1e293b; color: white; }
         .ctrl-btn.primary:active { background: #0f172a; }
-        .ctrl-btn:disabled { opacity: 0.4; filter: grayscale(0.5); pointer-events: none; }
+        .ctrl-btn:disabled { opacity: 0.4; pointer-events: none; }
+        
         .upload-area {
             margin: 0 24px 20px 24px; padding: 16px; border: 2px dashed #cbd5e1; border-radius: 28px;
             text-align: center; background: #f8fafc; cursor: pointer; transition: 0.2s;
         }
         .upload-area:hover { background: #f1f5f9; }
         .upload-area i { font-size: 2rem; color: #4f46e5; margin-bottom: 8px; }
-        .upload-area p { color: #475569; font-weight: 500; }
+        .upload-area p { color: #475569; font-weight: 500; font-size: 0.9rem; }
+        .upload-hint { font-size: 0.75rem; color: #64748b; margin-top: 4px; }
+        
         #fileInput { display: none; }
-        .model-loading { font-size: 0.85rem; color: #2563eb; margin-top: 8px; }
+        .model-status { font-size: 0.8rem; color: #2563eb; margin-top: 8px; min-height: 20px; }
         .progress-bar {
             width: 100%; height: 6px; background: #e2e8f0; border-radius: 10px; margin-top: 10px; overflow: hidden; display: none;
         }
-        .progress-fill {
-            height: 100%; background: #4f46e5; width: 0%; transition: width 0.3s;
-        }
+        .progress-fill { height: 100%; background: #4f46e5; width: 0%; transition: width 0.3s; }
+        
         .history-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px 8px 24px; }
-        .history-header h2 { font-size: 1.25rem; font-weight: 590; color: #1e293b; }
+        .history-header h2 { font-size: 1.1rem; font-weight: 600; color: #1e293b; }
         .history-header button {
-            background: none; border: none; color: #4f46e5; font-size: 0.95rem; font-weight: 500;
-            padding: 8px 12px; border-radius: 30px; background: #f1f4f9; display: flex; align-items: center; gap: 6px; cursor: pointer;
+            background: none; border: none; color: #4f46e5; font-size: 0.85rem; font-weight: 500;
+            padding: 6px 12px; border-radius: 30px; background: #f1f4f9; cursor: pointer;
         }
-        .history-list { padding: 0 24px 30px 24px; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+        .history-list { padding: 0 24px 30px 24px; max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
         .history-item {
-            background: #ffffff; border-radius: 22px; padding: 18px 16px; border: 1px solid #edf2f7;
-            box-shadow: 0 6px 12px -8px rgba(0,0,0,0.08); transition: 0.1s; display: flex; flex-direction: column; gap: 12px;
+            background: #ffffff; border-radius: 20px; padding: 16px; border: 1px solid #edf2f7;
+            box-shadow: 0 4px 8px -4px rgba(0,0,0,0.08);
         }
-        .history-meta { display: flex; align-items: center; gap: 12px; font-size: 0.75rem; color: #64748b; }
-        .history-meta i { width: 16px; }
+        .history-meta { display: flex; align-items: center; gap: 8px; font-size: 0.7rem; color: #64748b; margin-bottom: 8px; }
         .history-text {
-            font-size: 1rem; font-weight: 450; color: #0f172a; background: #f8fafc; padding: 14px;
-            border-radius: 18px; line-height: 1.4; word-break: break-word; max-height: 100px; overflow-y: auto;
+            font-size: 0.95rem; color: #0f172a; background: #f8fafc; padding: 12px;
+            border-radius: 12px; line-height: 1.4; word-break: break-word; max-height: 80px; overflow-y: auto;
         }
-        .history-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 4px; flex-wrap: wrap; }
+        .history-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
         .history-actions button {
-            background: transparent; border: none; color: #4b5563; font-size: 1.1rem; width: 44px; height: 44px;
-            border-radius: 40px; display: inline-flex; align-items: center; justify-content: center;
-            background: #f1f4f9; cursor: pointer; transition: 0.1s;
+            background: transparent; border: none; color: #4b5563; font-size: 0.9rem; width: 36px; height: 36px;
+            border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+            background: #f1f4f9; cursor: pointer;
         }
-        .history-actions button:active { background: #e2e8f0; }
+        
         .toast-message {
-            position: fixed; bottom: 30px; left: 20px; right: 20px; max-width: 400px; margin: 0 auto;
-            background: #1e293b; color: white; padding: 14px 24px; border-radius: 60px; font-size: 0.95rem;
-            text-align: center; box-shadow: 0 20px 30px -10px black; opacity: 0; transition: 0.2s; pointer-events: none; z-index: 1000;
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: #1e293b; color: white; padding: 12px 24px; border-radius: 30px; font-size: 0.9rem;
+            box-shadow: 0 10px 30px -10px black; opacity: 0; transition: 0.2s; pointer-events: none; z-index: 1000;
         }
+        .toast-message.show { opacity: 1; }
+        
+        .lang-selector {
+            display: flex; gap: 8px; margin: 12px 24px;
+        }
+        .lang-option {
+            flex: 1; text-align: center; padding: 8px; font-size: 0.85rem; border-radius: 20px;
+            background: #f8fafc; border: 1px solid #e2e8f0; color: #64748b; cursor: pointer;
+        }
+        .lang-option.active { background: #1e293b; color: white; border-color: #1e293b; }
     </style>
 </head>
 <body>
     <div class="app-container">
         <div class="header">
-            <h1><i class="fas fa-microphone-lines"></i> 语音转写·离线版</h1>
-            <div class="lang-selector" id="langSelector">
-                <button class="lang-option active" data-lang="zh-CN">🇨🇳 中文</button>
-                <button class="lang-option" data-lang="en-US">🇬🇧 英文</button>
+            <h1><i class="fas fa-microphone-lines"></i> 语音转写 Pro</h1>
+            
+            <!-- 模式切换 -->
+            <div class="mode-tabs" id="modeTabs">
+                <button class="mode-tab active" data-mode="realtime" onclick="switchMode('realtime')">
+                    <i class="fas fa-broadcast-tower"></i> 实时转写
+                </button>
+                <button class="mode-tab" data-mode="offline" onclick="switchMode('offline')">
+                    <i class="fas fa-cloud-upload-alt"></i> 离线识别
+                </button>
+            </div>
+            
+            <!-- 模型源选择 -->
+            <div class="source-selector" id="sourceSelector">
+                <button class="source-btn active" data-source="mirror" onclick="setModelSource('mirror')">🇨🇳 国内镜像</button>
+                <button class="source-btn" data-source="hf" onclick="setModelSource('hf')">🌐 HuggingFace</button>
+                <button class="source-btn" data-source="local" onclick="setModelSource('local')">💻 本地模型</button>
             </div>
         </div>
 
+        <!-- 语言选择 -->
+        <div class="lang-selector" id="langSelector">
+            <button class="lang-option active" data-lang="zh-CN">🇨🇳 中文</button>
+            <button class="lang-option" data-lang="en-US">🇬🇧 英文</button>
+            <button class="lang-option" data-lang="zh-CN,en-US">🌐 中英</button>
+        </div>
+
+        <!-- 实时转写显示区 -->
         <div class="live-card">
-            <div class="transcript-label"><i class="far fa-comment-dots"></i> 实时转写</div>
-            <div class="live-transcript" id="liveTranscript">点击开始，对着麦克风说话...</div>
+            <div class="transcript-label">
+                <i class="far fa-comment-dots"></i> 
+                <span id="transcriptLabel">实时转写</span>
+            </div>
+            <div class="live-transcript" id="liveTranscript">点击开始录音，或上传音频文件...</div>
             <div class="audio-meter" id="audioMeter"></div>
-            <div class="status-badge" id="statusBadge"><i class="fas fa-circle"></i> 空闲</div>
+            <div class="status-badge" id="statusBadge"><i class="fas fa-circle"></i> 就绪</div>
+            
+            <!-- 进度条（仅离线模式显示） -->
+            <div class="progress-bar" id="progressContainer">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="model-status" id="modelStatus"></div>
         </div>
 
-        <div class="control-panel">
-            <button class="ctrl-btn primary" id="startBtn"><i class="fas fa-play"></i> 开始</button>
-            <button class="ctrl-btn" id="stopBtn" disabled><i class="fas fa-stop"></i> 停止</button>
+        <!-- 控制按钮 -->
+        <div class="control-panel" id="realtimeControls">
+            <button class="ctrl-btn primary" id="startBtn" onclick="startRecording()">
+                <i class="fas fa-play"></i> 开始
+            </button>
+            <button class="ctrl-btn" id="stopBtn" onclick="stopRecording()" disabled>
+                <i class="fas fa-stop"></i> 停止
+            </button>
         </div>
 
-        <div class="upload-area" id="uploadArea">
+        <!-- 上传区域（离线模式显示） -->
+        <div class="upload-area" id="uploadArea" style="display: none;" onclick="document.getElementById('fileInput').click()">
             <i class="fas fa-cloud-upload-alt"></i>
             <p>点击或拖拽上传音频文件</p>
-            <p style="font-size:0.8rem; color:#64748b;">支持 mp3, m4a, wav, webm 等 (离线识别，首次需下载模型)</p>
-            <div id="modelStatus" class="model-loading">⚡ 点击开始加载模型</div>
-            <div id="progressContainer" class="progress-bar">
-                <div id="progressFill" class="progress-fill"></div>
-            </div>
+            <p class="upload-hint">支持 mp3, m4a, wav, webm, ogg (≤50MB)</p>
         </div>
-        <input type="file" id="fileInput" accept="audio/*">
+        <input type="file" id="fileInput" accept="audio/*" style="display: none;">
 
+        <!-- 历史记录 -->
         <div class="history-header">
-            <h2><i class="far fa-clock"></i> 本地记录</h2>
-            <button id="exportAllBtn"><i class="fas fa-download"></i> 全部导出</button>
+            <h2><i class="far fa-clock"></i> 历史记录</h2>
+            <button onclick="exportAll()"><i class="fas fa-download"></i> 导出全部</button>
         </div>
-
         <div class="history-list" id="historyList">
-            <div style="text-align: center; color: #94a3b8; padding: 30px 0;">暂无转写记录</div>
+            <div style="text-align: center; color: #94a3b8; padding: 20px;">暂无记录</div>
         </div>
     </div>
 
-    <div id="toast" class="toast-message"></div>
+    <div class="toast-message" id="toast"></div>
 
     <script>
-        (function() {
-            // 初始化音频可视化条
-            const audioMeter = document.getElementById('audioMeter');
-            for (let i = 0; i < 20; i++) {
-                const bar = document.createElement('div');
-                bar.className = 'audio-bar';
-                bar.style.height = '4px';
-                audioMeter.appendChild(bar);
+        // ==================== 配置 ====================
+        
+        const MODEL_SOURCES = {
+            mirror: {
+                name: '国内镜像',
+                host: 'https://hf-mirror.com',
+                template: 'https://hf-mirror.com/{model}/resolve/main/'
+            },
+            hf: {
+                name: 'HuggingFace',
+                host: 'https://huggingface.co',
+                template: 'https://huggingface.co/{model}/resolve/main/'
+            },
+            local: {
+                name: '本地模型',
+                host: null,
+                template: './models/{model}/'
             }
+        };
 
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            
-            // DOM 元素
-            const liveTranscriptEl = document.getElementById('liveTranscript');
-            const statusBadge = document.getElementById('statusBadge');
-            const startBtn = document.getElementById('startBtn');
-            const stopBtn = document.getElementById('stopBtn');
-            const langSelector = document.getElementById('langSelector');
-            const historyListEl = document.getElementById('historyList');
-            const toastEl = document.getElementById('toast');
-            const exportAllBtn = document.getElementById('exportAllBtn');
-            const uploadArea = document.getElementById('uploadArea');
-            const fileInput = document.getElementById('fileInput');
-            const modelStatus = document.getElementById('modelStatus');
-            const progressContainer = document.getElementById('progressContainer');
-            const progressFill = document.getElementById('progressFill');
+        // ==================== 状态管理 ====================
+        
+        let currentMode = 'realtime'; // 'realtime' | 'offline'
+        let currentSource = 'mirror';
+        let currentLang = 'zh-CN';
+        
+        // 实时模式状态
+        let isRecording = false;
+        let recognition = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let transcriptSegments = [];
+        let analyser = null;
+        let visualizerInterval = null;
+        
+        // 离线模式状态
+        let whisperPipeline = null;
+        let isModelLoading = false;
+        
+        // 数据库
+        const DB_NAME = 'VoiceTranscriptDB_v3';
+        const STORE_NAME = 'recordings';
+        let db = null;
 
-            // 状态
-            let currentStream = null;
-            let mediaRecorder = null;
-            let recognition = null;
-            let isRecording = false;
-            let userStopped = false;
-            let finalTranscriptSegments = [];
-            let audioChunks = [];
-            let currentLanguage = 'zh-CN';
-            let analyser = null;
-            let visualizerInterval = null;
+        // ==================== 初始化 ====================
+        
+        // 初始化音频可视化条
+        const audioMeter = document.getElementById('audioMeter');
+        for (let i = 0; i < 20; i++) {
+            const bar = document.createElement('div');
+            bar.className = 'audio-bar';
+            bar.style.height = '4px';
+            audioMeter.appendChild(bar);
+        }
 
-            // Transformers.js
-            let pipeline = null;
-            let isModelLoading = false;
-
-            // IndexedDB
-            const DB_NAME = 'VoiceTranscriptDB_v2';
-            const STORE_NAME = 'recordings';
-            const DB_VERSION = 1;
-            let db = null;
-
-            // ---------- 数据库 ----------
-            function openDB() {
-                return new Promise((resolve, reject) => {
-                    if (db) return resolve(db);
-                    const request = indexedDB.open(DB_NAME, DB_VERSION);
-                    request.onerror = () => reject('数据库打开失败');
-                    request.onsuccess = (e) => {
-                        db = e.target.result;
-                        resolve(db);
-                    };
-                    request.onupgradeneeded = (e) => {
-                        const db = e.target.result;
-                        if (!db.objectStoreNames.contains(STORE_NAME)) {
-                            const store = db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
-                            store.createIndex('timestamp', 'timestamp', { unique: false });
-                        }
-                    };
-                });
-            }
-
-            async function addRecording(blob, transcript, lang, source = 'mic') {
-                await openDB();
-                return new Promise((resolve, reject) => {
-                    const tx = db.transaction(STORE_NAME, 'readwrite');
-                    const store = tx.objectStore(STORE_NAME);
-                    const entry = {
-                        timestamp: Date.now(),
-                        audioBlob: blob,
-                        transcript: transcript || ' ',
-                        language: lang,
-                        source: source
-                    };
-                    const req = store.add(entry);
-                    req.onsuccess = () => resolve();
-                    req.onerror = reject;
-                });
-            }
-
-            async function getAllRecordings() {
-                await openDB();
-                return new Promise((resolve, reject) => {
-                    const tx = db.transaction(STORE_NAME, 'readonly');
-                    const store = tx.objectStore(STORE_NAME);
-                    const req = store.getAll();
-                    req.onsuccess = () => resolve(req.result || []);
-                    req.onerror = reject;
-                });
-            }
-
-            async function deleteRecording(id) {
-                await openDB();
-                return new Promise((resolve, reject) => {
-                    const tx = db.transaction(STORE_NAME, 'readwrite');
-                    const store = tx.objectStore(STORE_NAME);
-                    const req = store.delete(id);
-                    req.onsuccess = () => resolve();
-                    req.onerror = reject;
-                });
-            }
-
-            // ---------- 渲染历史 ----------
-            async function renderHistory() {
-                try {
-                    const records = await getAllRecordings();
-                    if (records.length === 0) {
-                        historyListEl.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 30px 0;">暂无转写记录</div>';
-                        return;
+        // 检查浏览器支持
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        // ==================== 数据库操作 ====================
+        
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                if (db) return resolve(db);
+                const request = indexedDB.open(DB_NAME, 1);
+                request.onerror = () => reject('数据库打开失败');
+                request.onsuccess = (e) => {
+                    db = e.target.result;
+                    resolve(db);
+                };
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+                        store.createIndex('timestamp', 'timestamp', { unique: false });
                     }
-                    records.sort((a,b) => b.timestamp - a.timestamp);
-                    let html = '';
-                    records.forEach(rec => {
-                        const date = new Date(rec.timestamp).toLocaleString(undefined, { hour12: false });
-                        const preview = rec.transcript.length > 80 ? rec.transcript.slice(0,80)+'…' : rec.transcript;
-                        html += `
-                        <div class="history-item" data-id="${rec.id}">
-                            <div class="history-meta">
-                                <i class="far fa-calendar-alt"></i> ${date}  ·  ${rec.language === 'zh-CN' ? '中文' : '英文'} · ${rec.source === 'mic' ? '🎤实时' : '📁上传'}
-                            </div>
-                            <div class="history-text">${escapeHtml(rec.transcript) || '无文本'}</div>
-                            <div class="history-actions">
-                                <button class="play-audio" title="播放"><i class="fas fa-play"></i></button>
-                                <button class="export-text" title="导出文本"><i class="fas fa-file-alt"></i></button>
-                                <button class="export-audio" title="导出音频"><i class="fas fa-download"></i></button>
-                                <button class="delete-entry" title="删除"><i class="fas fa-trash-alt"></i></button>
-                            </div>
-                        </div>`;
-                    });
-                    historyListEl.innerHTML = html;
+                };
+            });
+        }
 
-                    // 绑定事件
-                    document.querySelectorAll('.history-item').forEach(item => {
-                        const id = Number(item.dataset.id);
-                        const record = records.find(r => r.id === id);
-                        if (!record) return;
+        async function saveRecording(blob, transcript, lang, mode, source) {
+            await openDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                const entry = {
+                    timestamp: Date.now(),
+                    audioBlob: blob,
+                    transcript: transcript || ' ',
+                    language: lang,
+                    mode: mode,
+                    source: source
+                };
+                const req = store.add(entry);
+                req.onsuccess = () => resolve();
+                req.onerror = reject;
+            });
+        }
 
-                        item.querySelector('.play-audio')?.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            const url = URL.createObjectURL(record.audioBlob);
-                            new Audio(url).play();
-                            setTimeout(() => URL.revokeObjectURL(url), 10000);
-                        });
+        async function getAllRecordings() {
+            await openDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readonly');
+                const store = tx.objectStore(STORE_NAME);
+                const req = store.getAll();
+                req.onsuccess = () => resolve(req.result || []);
+                req.onerror = reject;
+            });
+        }
 
-                        item.querySelector('.export-text')?.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            const blob = new Blob(['\uFEFF' + record.transcript], { type: 'text/plain;charset=utf-8' });
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `transcript_${record.timestamp}.txt`;
-                            a.click();
-                            URL.revokeObjectURL(url);
-                            showToast('文本已导出');
-                        });
+        async function deleteRecording(id) {
+            await openDB();
+            return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                const req = store.delete(id);
+                req.onsuccess = () => resolve();
+                req.onerror = reject;
+            });
+        }
 
-                        item.querySelector('.export-audio')?.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            const url = URL.createObjectURL(record.audioBlob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `audio_${record.timestamp}.webm`;
-                            a.click();
-                            URL.revokeObjectURL(url);
-                            showToast('音频已导出');
-                        });
-
-                        item.querySelector('.delete-entry')?.addEventListener('click', async (e) => {
-                            e.stopPropagation();
-                            await deleteRecording(id);
-                            renderHistory();
-                            showToast('已删除');
-                        });
-                    });
-                } catch (e) {
-                    console.error(e);
-                }
-            }
-
-            function escapeHtml(unsafe) {
-                if (!unsafe) return '';
-                return unsafe.replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
-            }
-
-            function showToast(msg, duration = 2000) {
-                toastEl.style.opacity = '1';
-                toastEl.innerText = msg;
-                setTimeout(() => toastEl.style.opacity = '0', duration);
-            }
-
-            // ---------- 实时录音 ----------
-            function closeStream() {
-                if (currentStream) {
-                    currentStream.getTracks().forEach(track => track.stop());
-                    currentStream = null;
-                }
-                if (visualizerInterval) {
-                    clearInterval(visualizerInterval);
-                    visualizerInterval = null;
-                }
-                audioMeter.style.opacity = '0';
-            }
-
-            function updateVisualizer() {
-                if (!analyser) return;
-                const data = new Uint8Array(analyser.frequencyBinCount);
-                analyser.getByteFrequencyData(data);
-                const bars = audioMeter.querySelectorAll('.audio-bar');
-                const step = Math.floor(data.length / bars.length);
+        // ==================== UI 控制 ====================
+        
+        function switchMode(mode) {
+            currentMode = mode;
+            
+            // 更新标签
+            document.querySelectorAll('.mode-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.dataset.mode === mode);
+            });
+            
+            // 更新界面
+            const realtimeControls = document.getElementById('realtimeControls');
+            const uploadArea = document.getElementById('uploadArea');
+            const label = document.getElementById('transcriptLabel');
+            const status = document.getElementById('statusBadge');
+            
+            if (mode === 'realtime') {
+                realtimeControls.style.display = 'flex';
+                uploadArea.style.display = 'none';
+                label.innerHTML = '<i class="fas fa-broadcast-tower"></i> 实时转写';
+                status.innerHTML = '<i class="fas fa-circle"></i> 就绪';
+                document.getElementById('progressContainer').style.display = 'none';
+                document.getElementById('modelStatus').textContent = '';
+            } else {
+                realtimeControls.style.display = 'none';
+                uploadArea.style.display = 'block';
+                label.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> 离线识别';
+                status.innerHTML = '<i class="fas fa-circle"></i> 请上传文件';
                 
-                bars.forEach((bar, i) => {
-                    const value = data[i * step];
-                    const height = Math.max(4, (value / 255) * 20);
-                    bar.style.height = height + 'px';
+                // 离线模式下预加载模型
+                if (!whisperPipeline && !isModelLoading) {
+                    loadWhisperModel().catch(() => {});
+                }
+            }
+            
+            showToast(`已切换到: ${mode === 'realtime' ? '实时转写' : '离线识别'}`);
+        }
+
+        function setModelSource(source) {
+            currentSource = source;
+            document.querySelectorAll('.source-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.source === source);
+            });
+            
+            // 清除已加载的模型，强制重新加载
+            whisperPipeline = null;
+            showToast(`模型源: ${MODEL_SOURCES[source].name}`);
+        }
+
+        // 语言选择
+        document.getElementById('langSelector').addEventListener('click', (e) => {
+            const btn = e.target.closest('.lang-option');
+            if (!btn) return;
+            currentLang = btn.dataset.lang;
+            document.querySelectorAll('.lang-option').forEach(opt => opt.classList.remove('active'));
+            btn.classList.add('active');
+            showToast(`语言: ${btn.textContent}`);
+        });
+
+        // ==================== 实时转写功能 ====================
+        
+        function updateVisualizer() {
+            if (!analyser) return;
+            const data = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(data);
+            const bars = audioMeter.querySelectorAll('.audio-bar');
+            const step = Math.floor(data.length / bars.length);
+            
+            bars.forEach((bar, i) => {
+                const value = data[i * step] || 0;
+                const height = Math.max(4, (value / 255) * 20);
+                bar.style.height = height + 'px';
+            });
+        }
+
+        async function startRecording() {
+            if (isRecording) return;
+            
+            if (!SpeechRecognition) {
+                showToast('您的浏览器不支持实时语音识别');
+                return;
+            }
+
+            transcriptSegments = [];
+            audioChunks = [];
+            
+            try {
+                // 获取麦克风
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        sampleRate: 16000,
+                        channelCount: 1,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
                 });
-            }
 
-            async function saveToDBAndCleanup() {
-                try {
-                    const blob = new Blob(audioChunks, { type: 'audio/webm' });
-                    const fullTranscript = finalTranscriptSegments.join(' ').trim() || '（无语音识别文本）';
-                    await addRecording(blob, fullTranscript, currentLanguage, 'mic');
-                    showToast('已保存到本地记录');
-                } catch (e) {
-                    console.warn('保存失败', e);
-                    showToast('保存失败');
-                } finally {
-                    closeStream();
-                    isRecording = false;
-                    startBtn.disabled = false;
-                    stopBtn.disabled = true;
-                    statusBadge.innerHTML = '<i class="fas fa-circle"></i> 空闲';
-                    statusBadge.classList.remove('recording');
-                    liveTranscriptEl.innerText = '点击开始，对着麦克风说话...';
-                    renderHistory();
-                }
-            }
-
-            function stopRecording() {
-                if (!isRecording) return;
-                userStopped = true;
-                if (recognition) {
-                    try { recognition.stop(); } catch (e) {}
-                }
-                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                    mediaRecorder.stop();
-                }
-            }
-
-            async function startRecording() {
-                if (isRecording) return;
-                finalTranscriptSegments = [];
-                audioChunks = [];
-                userStopped = false;
-
-                try {
-                    currentStream = await navigator.mediaDevices.getUserMedia({ 
-                        audio: {
-                            sampleRate: 16000,
-                            channelCount: 1,
-                            echoCancellation: true,
-                            noiseSuppression: true
-                        }
-                    });
-                } catch (err) {
-                    showToast('无法访问麦克风: ' + err.message);
-                    return;
-                }
-
-                // 设置音频分析器用于可视化
+                // 设置可视化
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 analyser = audioCtx.createAnalyser();
                 analyser.fftSize = 64;
-                const source = audioCtx.createMediaStreamSource(currentStream);
+                const source = audioCtx.createMediaStreamSource(stream);
                 source.connect(analyser);
                 visualizerInterval = setInterval(updateVisualizer, 100);
                 audioMeter.style.opacity = '1';
 
                 // 设置语音识别
-                if (SpeechRecognition) {
-                    try {
-                        recognition = new SpeechRecognition();
-                        recognition.continuous = true;
-                        recognition.interimResults = true;
-                        recognition.lang = currentLanguage;
-                        
-                        recognition.onresult = (event) => {
-                            let interim = '';
-                            for (let i = 0; i < event.results.length; i++) {
-                                const result = event.results[i];
-                                if (result.isFinal) {
-                                    const text = result[0].transcript;
-                                    if (!finalTranscriptSegments.length || finalTranscriptSegments[finalTranscriptSegments.length-1] !== text) {
-                                        finalTranscriptSegments.push(text);
-                                    }
-                                } else {
-                                    interim += result[0].transcript;
-                                }
-                            }
-                            const finalText = finalTranscriptSegments.join(' ');
-                            liveTranscriptEl.innerText = finalText + (interim ? ' ' + interim : '');
-                        };
-                        
-                        recognition.onerror = (e) => {
-                            console.warn('识别错误:', e.error);
-                            if (!userStopped && isRecording) {
-                                setTimeout(() => {
-                                    if (!userStopped && isRecording) {
-                                        try { recognition.start(); } catch (err) {}
-                                    }
-                                }, 500);
-                            }
-                        };
-                        
-                        recognition.onend = () => {
-                            if (!userStopped && isRecording) {
-                                setTimeout(() => {
-                                    if (!userStopped && isRecording) {
-                                        try { recognition.start(); } catch (err) {}
-                                    }
-                                }, 300);
-                            }
-                        };
-                    } catch (e) {
-                        console.error('语音识别初始化失败', e);
-                        recognition = null;
+                recognition = new SpeechRecognition();
+                recognition.continuous = true;
+                recognition.interimResults = true;
+                recognition.lang = currentLang;
+                
+                let interimText = '';
+                
+                recognition.onresult = (event) => {
+                    interimText = '';
+                    for (let i = 0; i < event.results.length; i++) {
+                        const result = event.results[i];
+                        if (result.isFinal) {
+                            transcriptSegments.push(result[0].transcript);
+                        } else {
+                            interimText += result[0].transcript;
+                        }
                     }
-                }
+                    updateTranscriptDisplay(interimText);
+                };
 
-                // 设置媒体录制
-                try {
-                    mediaRecorder = new MediaRecorder(currentStream, {
-                        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
-                    });
-                    mediaRecorder.ondataavailable = (e) => {
-                        if (e.data.size > 0) audioChunks.push(e.data);
-                    };
-                    mediaRecorder.onstop = saveToDBAndCleanup;
-                    mediaRecorder.start(200);
-                } catch (e) {
-                    showToast('媒体录制初始化失败');
-                    closeStream();
-                    return;
-                }
-
-                // 启动识别
-                if (recognition) {
-                    try { 
-                        recognition.start(); 
-                    } catch (e) {
-                        showToast('识别启动失败');
-                        mediaRecorder.stop();
-                        return;
+                recognition.onerror = (e) => {
+                    console.warn('识别错误:', e.error);
+                    if (isRecording && e.error !== 'aborted') {
+                        setTimeout(() => {
+                            if (isRecording) recognition.start();
+                        }, 500);
                     }
-                }
+                };
 
+                // 设置录制
+                mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
+                });
+                
+                mediaRecorder.ondataavailable = (e) => {
+                    if (e.data.size > 0) audioChunks.push(e.data);
+                };
+                
+                mediaRecorder.onstop = async () => {
+                    const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const text = transcriptSegments.join(' ');
+                    await saveRecording(blob, text, currentLang, 'realtime', 'webspeech');
+                    showToast('已保存');
+                    renderHistory();
+                    resetUI();
+                };
+
+                // 启动
+                recognition.start();
+                mediaRecorder.start(200);
                 isRecording = true;
-                startBtn.disabled = true;
-                stopBtn.disabled = false;
-                statusBadge.innerHTML = '<i class="fas fa-circle"></i> 录音中...';
-                statusBadge.classList.add('recording');
-                liveTranscriptEl.innerText = '正在聆听...';
+                
+                document.getElementById('startBtn').disabled = true;
+                document.getElementById('stopBtn').disabled = false;
+                document.getElementById('statusBadge').innerHTML = '<i class="fas fa-circle"></i> 录音中...';
+                document.getElementById('statusBadge').classList.add('recording');
+                updateTranscriptDisplay('', '正在聆听...');
+                
+            } catch (err) {
+                showToast('启动失败: ' + err.message);
+            }
+        }
+
+        function stopRecording() {
+            if (!isRecording) return;
+            isRecording = false;
+            
+            if (recognition) {
+                try { recognition.stop(); } catch(e) {}
+            }
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+            
+            clearInterval(visualizerInterval);
+            audioMeter.style.opacity = '0';
+        }
+
+        function resetUI() {
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+            document.getElementById('statusBadge').innerHTML = '<i class="fas fa-circle"></i> 就绪';
+            document.getElementById('statusBadge').classList.remove('recording');
+            updateTranscriptDisplay('', '点击开始录音...');
+        }
+
+        // ==================== 离线识别功能 (Whisper) ====================
+        
+        async function loadWhisperModel() {
+            if (whisperPipeline) return whisperPipeline;
+            if (isModelLoading) {
+                showToast('模型加载中...');
+                return null;
             }
 
-            // ---------- Transformers.js Whisper 离线识别（修复版）----------
-            async function loadWhisperPipeline() {
-                if (pipeline) return pipeline;
-                if (isModelLoading) {
-                    showToast('模型正在加载中...');
-                    return null;
-                }
+            // 检查 Transformers.js
+            if (typeof window.pipeline !== 'function') {
+                showToast('Transformers.js 未加载');
+                return null;
+            }
 
-                // 检查 Transformers.js 是否正确加载
-                if (typeof window.pipeline !== 'function') {
-                    showToast('Transformers.js 未加载，请检查网络');
-                    throw new Error('Transformers.js not loaded');
-                }
+            isModelLoading = true;
+            const statusEl = document.getElementById('modelStatus');
+            const progressContainer = document.getElementById('progressContainer');
+            const progressFill = document.getElementById('progressFill');
+            
+            statusEl.textContent = `⏳ 正在从 ${MODEL_SOURCES[currentSource].name} 加载...`;
+            progressContainer.style.display = 'block';
+            progressFill.style.width = '5%';
 
-                isModelLoading = true;
-                modelStatus.innerText = '⏳ 正在加载模型（约 75MB）...';
-                progressContainer.style.display = 'block';
-                progressFill.style.width = '5%';
+            // 配置环境
+            const source = MODEL_SOURCES[currentSource];
+            if (currentSource === 'local') {
+                env.allowLocalModels = true;
+                env.allowRemoteModels = false;
+                env.localModelPath = './models';
+            } else {
+                env.allowLocalModels = false;
+                env.allowRemoteModels = true;
+                env.remoteHost = source.host;
+                env.remoteModelPath = source.template;
+            }
 
-                // 超时提示
-                const timeoutId = setTimeout(() => {
-                    if (isModelLoading) {
-                        modelStatus.innerText = '⚠️ 加载时间较长，请耐心等待...';
-                        progressFill.style.width = '30%';
-                    }
-                }, 15000);
-
-                try {
-                    // 使用量化模型减少体积
-                    pipeline = await window.pipeline(
-                        'automatic-speech-recognition',
-                        'Xenova/whisper-tiny',
-                        {
-                            quantized: true, // 关键：使用 int8 量化，体积减半
-                            revision: 'main',
-                            progress_callback: (progress) => {
-                                console.log('Progress:', progress);
-                                if (progress.status === 'progress' && progress.total) {
-                                    const percent = Math.max(5, (progress.loaded / progress.total) * 100);
-                                    progressFill.style.width = percent + '%';
-                                    modelStatus.innerText = `⏳ 下载中 ${Math.round(percent)}%`;
-                                } else if (progress.status === 'init') {
-                                    progressFill.style.width = '10%';
-                                    modelStatus.innerText = '⏳ 初始化...';
-                                } else if (progress.status === 'done') {
-                                    progressFill.style.width = '100%';
-                                    modelStatus.innerText = '✅ 模型已就绪';
-                                }
+            try {
+                whisperPipeline = await window.pipeline(
+                    'automatic-speech-recognition',
+                    'Xenova/whisper-tiny',
+                    {
+                        quantized: true,
+                        revision: 'main',
+                        progress_callback: (progress) => {
+                            console.log('Progress:', progress);
+                            if (progress.status === 'progress' && progress.total) {
+                                const percent = Math.max(5, (progress.loaded / progress.total) * 100);
+                                progressFill.style.width = percent + '%';
+                                statusEl.textContent = `⏳ 下载中 ${Math.round(percent)}%`;
+                            } else if (progress.status === 'done') {
+                                progressFill.style.width = '100%';
+                                statusEl.textContent = '✅ 模型就绪';
                             }
                         }
-                    );
-                    
-                    clearTimeout(timeoutId);
-                    showToast('模型加载完成');
-                    setTimeout(() => progressContainer.style.display = 'none', 1000);
-                    
-                } catch (e) {
-                    clearTimeout(timeoutId);
-                    console.error('模型加载失败:', e);
-                    modelStatus.innerText = '❌ 加载失败，请刷新重试';
-                    progressFill.style.width = '0%';
-                    showToast('模型加载失败: ' + e.message);
-                    pipeline = null;
-                    throw e;
-                } finally {
-                    isModelLoading = false;
-                }
-                return pipeline;
-            }
-
-            async function getPipeline() {
-                if (pipeline) return pipeline;
-                return await loadWhisperPipeline();
-            }
-
-            // 上传区域点击
-            uploadArea.addEventListener('click', () => {
-                if (!pipeline && !isModelLoading) {
-                    // 后台预加载模型
-                    loadWhisperPipeline().catch(() => {});
-                }
-                fileInput.click();
-            });
-
-            // 文件选择处理
-            fileInput.addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                // 验证文件
-                const validExts = ['.mp3', '.m4a', '.wav', '.webm', '.ogg', '.aac'];
-                const ext = '.' + file.name.split('.').pop().toLowerCase();
-                if (!validExts.includes(ext)) {
-                    showToast('请选择有效的音频文件');
-                    fileInput.value = '';
-                    return;
-                }
-                if (file.size > 50 * 1024 * 1024) { // 50MB 限制
-                    showToast('文件过大（>50MB），请分割后上传');
-                    fileInput.value = '';
-                    return;
-                }
-
-                // 确保模型就绪
-                const pipe = await getPipeline();
-                if (!pipe) {
-                    showToast('模型未就绪，请稍后重试');
-                    fileInput.value = '';
-                    return;
-                }
-
-                showToast('正在识别，请稍候...');
-                modelStatus.innerText = '🔍 识别中...';
-
-                let audioContext = null;
-                let offlineCtx = null;
-
-                try {
-                    // 读取文件
-                    const arrayBuffer = await file.arrayBuffer();
-                    
-                    // 解码音频
-                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                    
-                    // 重采样到 16kHz（Whisper 要求）
-                    const targetSampleRate = 16000;
-                    const duration = audioBuffer.duration;
-                    const newLength = Math.ceil(duration * targetSampleRate);
-                    
-                    offlineCtx = new OfflineAudioContext(1, newLength, targetSampleRate);
-                    const source = offlineCtx.createBufferSource();
-                    source.buffer = audioBuffer;
-                    source.connect(offlineCtx.destination);
-                    source.start();
-                    
-                    const renderedBuffer = await offlineCtx.startRendering();
-                    const audioData = renderedBuffer.getChannelData(0);
-
-                    // 识别
-                    const language = currentLanguage === 'zh-CN' ? 'zh' : 'en';
-                    const result = await pipe(audioData, { 
-                        language: language, 
-                        task: 'transcribe',
-                        return_timestamps: false
-                    });
-                    
-                    const transcript = result.text;
-
-                    // 保存
-                    const originalBlob = new Blob([arrayBuffer], { type: file.type });
-                    await addRecording(originalBlob, transcript, currentLanguage, 'upload');
-
-                    liveTranscriptEl.innerText = transcript;
-                    showToast('识别完成，已保存');
-                    renderHistory();
-                    
-                } catch (err) {
-                    console.error('识别失败:', err);
-                    showToast('识别失败: ' + err.message);
-                } finally {
-                    // 清理资源
-                    if (audioContext && audioContext.state !== 'closed') {
-                        await audioContext.close();
                     }
-                    audioContext = null;
-                    offlineCtx = null;
-                    modelStatus.innerText = '✅ 模型已就绪';
-                    fileInput.value = '';
-                }
-            });
-
-            // ---------- 事件绑定 ----------
-            startBtn.addEventListener('click', startRecording);
-            stopBtn.addEventListener('click', stopRecording);
-
-            langSelector.addEventListener('click', (e) => {
-                const btn = e.target.closest('.lang-option');
-                if (!btn) return;
-                const lang = btn.dataset.lang;
-                if (!lang) return;
-                document.querySelectorAll('.lang-option').forEach(opt => opt.classList.remove('active'));
-                btn.classList.add('active');
-                currentLanguage = lang;
-                showToast(`语言切换为 ${lang === 'zh-CN' ? '中文' : '英文'}`);
-            });
-
-            exportAllBtn.addEventListener('click', async () => {
-                try {
-                    const records = await getAllRecordings();
-                    if (records.length === 0) {
-                        showToast('暂无记录');
-                        return;
-                    }
-                    records.sort((a, b) => a.timestamp - b.timestamp);
-                    let content = '';
-                    for (const r of records) {
-                        const date = new Date(r.timestamp).toLocaleString();
-                        content += `--- ${date} (${r.language}) [${r.source === 'mic' ? '实时' : '上传'}] ---\n`;
-                        content += (r.transcript || '无文本') + '\n\n';
-                    }
-                    const blob = new Blob(['\uFEFF' + content], { type: 'text/plain;charset=utf-8' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `全部转写_${Date.now()}.txt`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    showToast('全部文本已导出');
-                } catch (e) {
-                    console.error('导出失败', e);
-                    showToast('导出失败: ' + e.message);
-                }
-            });
-
-            // 初始化
-            openDB().then(() => {
-                renderHistory();
-            }).catch(e => {
+                );
+                
+                showToast('模型加载完成');
+                setTimeout(() => progressContainer.style.display = 'none', 1000);
+                
+            } catch (e) {
                 console.error(e);
-                showToast('数据库初始化失败');
-            });
+                statusEl.textContent = '❌ 加载失败: ' + e.message;
+                progressFill.style.width = '0%';
+                showToast('模型加载失败，请切换源重试');
+                whisperPipeline = null;
+            } finally {
+                isModelLoading = false;
+            }
+            
+            return whisperPipeline;
+        }
 
-        })();
+        // 文件上传处理
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            // 验证
+            const validExts = ['.mp3', '.m4a', '.wav', '.webm', '.ogg', '.aac'];
+            const ext = '.' + file.name.split('.').pop().toLowerCase();
+            if (!validExts.includes(ext)) {
+                showToast('不支持的文件格式');
+                return;
+            }
+            if (file.size > 50 * 1024 * 1024) {
+                showToast('文件过大 (>50MB)');
+                return;
+            }
+
+            // 加载模型
+            const pipe = await loadWhisperModel();
+            if (!pipe) return;
+
+            showToast('正在识别...');
+            updateTranscriptDisplay('', '识别中，请稍候...');
+            
+            let audioContext = null;
+            
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                
+                // 重采样到 16kHz
+                const targetRate = 16000;
+                const newLength = Math.ceil(audioBuffer.duration * targetRate);
+                const offlineCtx = new OfflineAudioContext(1, newLength, targetRate);
+                
+                const source = offlineCtx.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(offlineCtx.destination);
+                source.start();
+                
+                const rendered = await offlineCtx.startRendering();
+                const audioData = rendered.getChannelData(0);
+
+                // 识别
+                const lang = currentLang.startsWith('zh') ? 'zh' : 'en';
+                const result = await pipe(audioData, {
+                    language: lang,
+                    task: 'transcribe'
+                });
+
+                const text = result.text;
+                updateTranscriptDisplay('', text);
+                
+                // 保存
+                const blob = new Blob([arrayBuffer], { type: file.type });
+                await saveRecording(blob, text, currentLang, 'offline', currentSource);
+                showToast('识别完成，已保存');
+                renderHistory();
+                
+            } catch (err) {
+                console.error(err);
+                updateTranscriptDisplay('', '识别失败: ' + err.message);
+                showToast('识别失败');
+            } finally {
+                if (audioContext?.state !== 'closed') {
+                    await audioContext?.close();
+                }
+                e.target.value = '';
+            }
+        });
+
+        // ==================== 公共功能 ====================
+        
+        function updateTranscriptDisplay(interim, final) {
+            const el = document.getElementById('liveTranscript');
+            const finalText = transcriptSegments.join(' ');
+            if (final !== undefined) {
+                el.textContent = final || finalText;
+            } else {
+                el.textContent = finalText + (interim ? ' ' + interim : '');
+            }
+        }
+
+        async function renderHistory() {
+            try {
+                const records = await getAllRecordings();
+                const listEl = document.getElementById('historyList');
+                
+                if (records.length === 0) {
+                    listEl.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 20px;">暂无记录</div>';
+                    return;
+                }
+                
+                records.sort((a, b) => b.timestamp - a.timestamp);
+                
+                listEl.innerHTML = records.map(rec => {
+                    const date = new Date(rec.timestamp).toLocaleString();
+                    const modeIcon = rec.mode === 'realtime' ? '🎤' : '☁️';
+                    return `
+                    <div class="history-item" data-id="${rec.id}">
+                        <div class="history-meta">
+                            ${modeIcon} ${date} · ${rec.language} · ${rec.source}
+                        </div>
+                        <div class="history-text">${escapeHtml(rec.transcript)}</div>
+                        <div class="history-actions">
+                            <button onclick="playAudio(${rec.id})" title="播放"><i class="fas fa-play"></i></button>
+                            <button onclick="copyText(${rec.id})" title="复制"><i class="fas fa-copy"></i></button>
+                            <button onclick="deleteRec(${rec.id})" title="删除"><i class="fas fa-trash"></i></button>
+                        </div>
+                    </div>`;
+                }).join('');
+                
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+        }
+
+        async function playAudio(id) {
+            const records = await getAllRecordings();
+            const rec = records.find(r => r.id === id);
+            if (!rec) return;
+            const url = URL.createObjectURL(rec.audioBlob);
+            new Audio(url).play();
+        }
+
+        async function copyText(id) {
+            const records = await getAllRecordings();
+            const rec = records.find(r => r.id === id);
+            if (!rec) return;
+            navigator.clipboard.writeText(rec.transcript);
+            showToast('已复制');
+        }
+
+        async function deleteRec(id) {
+            await deleteRecording(id);
+            renderHistory();
+            showToast('已删除');
+        }
+
+        async function exportAll() {
+            const records = await getAllRecordings();
+            if (records.length === 0) {
+                showToast('暂无记录');
+                return;
+            }
+            
+            let content = '';
+            records.sort((a, b) => a.timestamp - b.timestamp);
+            records.forEach(r => {
+                content += `=== ${new Date(r.timestamp).toLocaleString()} [${r.mode}] ===\n`;
+                content += r.transcript + '\n\n';
+            });
+            
+            const blob = new Blob(['\uFEFF' + content], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `语音转写记录_${Date.now()}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('已导出');
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 2500);
+        }
+
+        // ==================== 初始化 ====================
+        
+        openDB().then(() => renderHistory()).catch(console.error);
+        
+        // 默认使用国内镜像
+        setModelSource('mirror');
     </script>
 </body>
 </html>

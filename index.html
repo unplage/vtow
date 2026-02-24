@@ -1,1543 +1,910 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>VoiceScribe Local - 纯本地高性能语音转写</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <title>语音转写·离线专业版（文件上传+实时）</title>
+    <!-- Font Awesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Transformers.js 用于离线 Whisper 识别 -->
+    <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0"></script>
     <style>
+        /* 样式基本保持一致，增加上传区域 */
         * {
+            box-sizing: border-box;
             margin: 0;
             padding: 0;
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        :root {
-            --primary: #10b981;
-            --primary-dark: #059669;
-            --secondary: #3b82f6;
-            --accent: #8b5cf6;
-            --bg: #0a0a0a;
-            --surface: #1a1a1a;
-            --surface-light: #2a2a2a;
-            --surface-hover: #333;
-            --text: #fafafa;
-            --text-secondary: #a3a3a3;
-            --success: #10b981;
-            --warning: #f59e0b;
-            --error: #ef4444;
-            --border: #333;
-            --gradient: linear-gradient(135deg, #10b981 0%, #3b82f6 100%);
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            height: 100vh;
-            height: 100dvh;
-            overflow: hidden;
-            position: relative;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
+            color: #1e293b;
         }
 
         .app-container {
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
-            max-width: 100%;
+            width: 100%;
+            max-width: 480px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 32px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.08), 0 6px 12px rgba(0,0,0,0.05);
+            overflow: hidden;
+            backdrop-filter: blur(2px);
+            border: 1px solid rgba(255,255,255,0.3);
         }
 
         .header {
-            padding: 12px 0;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 12px;
+            padding: 24px 24px 16px 24px;
+            background: white;
+            border-bottom: 1px solid #f0f2f5;
         }
 
-        .brand {
+        .header h1 {
+            font-size: 1.9rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            background: linear-gradient(145deg, #0f172a, #334155);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 6px;
             display: flex;
             align-items: center;
+            gap: 8px;
+        }
+
+        .header h1 i {
+            background: #eef2ff;
+            padding: 8px;
+            border-radius: 18px;
+            color: #4f46e5;
+            font-size: 1.4rem;
+            -webkit-text-fill-color: #4f46e5;
+        }
+
+        .lang-selector {
+            display: flex;
             gap: 10px;
+            margin-top: 12px;
+            background: #f8fafc;
+            padding: 6px;
+            border-radius: 48px;
+            border: 1px solid #e2e8f0;
         }
 
-        .logo {
-            width: 36px;
-            height: 36px;
-            background: var(--gradient);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
+        .lang-option {
+            flex: 1;
+            text-align: center;
+            padding: 10px 6px;
+            font-size: 1rem;
+            font-weight: 500;
+            border-radius: 40px;
+            background: transparent;
+            border: none;
+            color: #64748b;
+            transition: all 0.2s ease;
+            cursor: pointer;
         }
 
-        .brand-text h1 {
-            font-size: 18px;
-            font-weight: 700;
-            letter-spacing: -0.5px;
-        }
-
-        .brand-text .tag {
-            font-size: 10px;
-            color: var(--primary);
+        .lang-option.active {
+            background: #ffffff;
+            color: #0f172a;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.03);
             font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 4px;
+            border: 0.5px solid #d9e2ef;
         }
 
-        .status-pill {
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 11px;
-            font-weight: 600;
+        .live-card {
+            background: #ffffff;
+            margin: 20px 24px;
+            padding: 24px 20px;
+            border-radius: 28px;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.02), 0 8px 18px -6px rgba(0,20,40,0.12);
+            border: 1px solid #ffffff80;
+            min-height: 160px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .transcript-label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #94a3b8;
+            margin-bottom: 12px;
             display: flex;
             align-items: center;
             gap: 6px;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            transition: all 0.3s;
         }
 
-        .status-pill.ready { color: var(--success); border-color: var(--success); }
-        .status-pill.recording { 
-            color: var(--error); 
-            border-color: var(--error);
-            animation: pulse-border 2s infinite;
+        .transcript-label i {
+            font-size: 0.9rem;
         }
-        .status-pill.processing { color: var(--warning); border-color: var(--warning); }
 
-        @keyframes pulse-border {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-            50% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0); }
+        .live-transcript {
+            font-size: 1.3rem;
+            line-height: 1.5;
+            font-weight: 420;
+            color: #0b1e33;
+            word-break: break-word;
+            white-space: pre-wrap;
+            flex: 1;
+            min-height: 80px;
+            max-height: 240px;
+            overflow-y: auto;
+            padding-right: 8px;
+            scrollbar-width: thin;
+        }
+
+        .status-badge {
+            align-self: flex-end;
+            font-size: 0.75rem;
+            padding: 6px 14px;
+            background: #f1f4f9;
+            border-radius: 40px;
+            color: #475569;
+            margin-top: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-badge.recording {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+
+        .status-badge i {
+            font-size: 0.7rem;
         }
 
         .control-panel {
-            display: grid;
-            grid-template-columns: 1fr auto 1fr;
+            display: flex;
+            justify-content: space-around;
+            padding: 8px 24px 24px 24px;
             gap: 12px;
-            margin-bottom: 12px;
-            align-items: center;
-        }
-
-        .lang-select {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 10px 14px;
-            border-radius: 12px;
-            font-size: 14px;
-            cursor: pointer;
-            outline: none;
-            transition: all 0.2s;
-        }
-
-        .lang-select:focus {
-            border-color: var(--primary);
-        }
-
-        .record-btn {
-            width: 64px;
-            height: 64px;
-            border-radius: 50%;
-            border: none;
-            background: var(--surface);
-            color: var(--text);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        }
-
-        .record-btn:active {
-            transform: scale(0.95);
-        }
-
-        .record-btn .btn-bg {
-            position: absolute;
-            inset: 4px;
-            border-radius: 50%;
-            background: var(--gradient);
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-
-        .record-btn.recording .btn-bg {
-            opacity: 1;
-            animation: recording-pulse 1.5s infinite;
-        }
-
-        @keyframes recording-pulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-        }
-
-        .record-btn svg {
-            width: 28px;
-            height: 28px;
-            position: relative;
-            z-index: 1;
-            transition: all 0.3s;
-        }
-
-        .record-btn.recording svg {
-            color: white;
-            transform: scale(0.8);
-        }
-
-        .secondary-actions {
-            display: flex;
-            gap: 8px;
-            justify-content: flex-end;
-        }
-
-        .icon-btn {
-            width: 40px;
-            height: 40px;
-            border-radius: 10px;
-            border: 1px solid var(--border);
-            background: var(--surface);
-            color: var(--text-secondary);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-            position: relative;
-        }
-
-        .icon-btn:hover:not(:disabled) {
-            background: var(--surface-light);
-            color: var(--text);
-            border-color: var(--primary);
-        }
-
-        .icon-btn:disabled {
-            opacity: 0.3;
-            cursor: not-allowed;
-        }
-
-        .icon-btn svg {
-            width: 18px;
-            height: 18px;
-        }
-
-        .badge {
-            position: absolute;
-            top: -2px;
-            right: -2px;
-            width: 8px;
-            height: 8px;
-            background: var(--error);
-            border-radius: 50%;
-            display: none;
-        }
-
-        .icon-btn.has-content .badge {
-            display: block;
-        }
-
-        .visualizer-panel {
-            height: 60px;
-            background: var(--surface);
-            border-radius: 16px;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            overflow: hidden;
-            border: 1px solid var(--border);
-        }
-
-        .visualizer-canvas {
-            width: 100%;
-            height: 100%;
-        }
-
-        .visualizer-overlay {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            pointer-events: none;
-        }
-
-        .time-display {
-            font-family: 'SF Mono', monospace;
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--primary);
-            text-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-
-        .visualizer-panel.recording .time-display {
-            opacity: 1;
-        }
-
-        .transcript-container {
-            flex: 1;
-            background: var(--surface);
-            border-radius: 16px;
-            border: 1px solid var(--border);
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .transcript-header {
-            padding: 12px 16px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: rgba(255,255,255,0.02);
-        }
-
-        .transcript-title {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .transcript-stats {
-            font-size: 11px;
-            color: var(--text-secondary);
-            display: flex;
-            gap: 12px;
-        }
-
-        .transcript-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px;
-            font-size: 17px;
-            line-height: 1.7;
-            scroll-behavior: smooth;
-        }
-
-        .transcript-content::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        .transcript-content::-webkit-scrollbar-thumb {
-            background: var(--surface-light);
-            border-radius: 3px;
-        }
-
-        .empty-state {
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            color: var(--text-secondary);
-            text-align: center;
-            padding: 40px;
-        }
-
-        .empty-icon {
-            width: 80px;
-            height: 80px;
-            background: var(--surface-light);
-            border-radius: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 40px;
-            margin-bottom: 20px;
-            opacity: 0.5;
-        }
-
-        .segment {
-            margin-bottom: 16px;
-            animation: slideIn 0.3s ease;
-            position: relative;
-            padding-left: 16px;
-            border-left: 3px solid var(--primary);
-            background: rgba(16, 185, 129, 0.05);
-            padding: 12px 16px;
-            border-radius: 0 12px 12px 0;
-        }
-
-        .segment.interim {
-            border-left-color: var(--warning);
-            background: rgba(245, 158, 11, 0.05);
-            opacity: 0.9;
-        }
-
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateX(-10px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-
-        .segment-time {
-            font-size: 11px;
-            color: var(--text-secondary);
-            margin-bottom: 4px;
-            font-family: monospace;
-        }
-
-        .segment-text {
-            word-wrap: break-word;
-            white-space: pre-wrap;
-        }
-
-        .cursor {
-            display: inline-block;
-            width: 2px;
-            height: 1.2em;
-            background: var(--primary);
-            animation: blink 1s infinite;
-            vertical-align: middle;
-            margin-left: 2px;
-        }
-
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0; }
-        }
-
-        .bottom-bar {
-            margin-top: 12px;
-            display: flex;
-            gap: 8px;
-            overflow-x: auto;
-            padding-bottom: 4px;
-        }
-
-        .tool-btn {
-            padding: 10px 16px;
-            border-radius: 10px;
-            border: 1px solid var(--border);
-            background: var(--surface);
-            color: var(--text-secondary);
-            font-size: 13px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            white-space: nowrap;
-            transition: all 0.2s;
-        }
-
-        .tool-btn:hover:not(:disabled) {
-            background: var(--surface-light);
-            color: var(--text);
-        }
-
-        .tool-btn:disabled {
-            opacity: 0.3;
-            cursor: not-allowed;
-        }
-
-        .tool-btn svg {
-            width: 16px;
-            height: 16px;
-        }
-
-        .modal {
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.8);
-            backdrop-filter: blur(10px);
-            z-index: 100;
-            display: none;
-            align-items: flex-end;
-            justify-content: center;
-        }
-
-        .modal.show {
-            display: flex;
-        }
-
-        .modal-content {
-            background: var(--surface);
-            width: 100%;
-            max-height: 80vh;
-            border-radius: 24px 24px 0 0;
-            border: 1px solid var(--border);
-            border-bottom: none;
-            display: flex;
-            flex-direction: column;
-            animation: slideUp 0.3s ease;
-        }
-
-        @keyframes slideUp {
-            from { transform: translateY(100%); }
-            to { transform: translateY(0); }
-        }
-
-        .modal-header {
-            padding: 20px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .modal-title {
-            font-size: 18px;
-            font-weight: 600;
-        }
-
-        .close-btn {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            border: none;
-            background: var(--surface-light);
-            color: var(--text);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal-body {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px;
-        }
-
-        .recording-item {
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .recording-item:hover {
-            border-color: var(--primary);
-            background: var(--surface-light);
-        }
-
-        .recording-icon {
-            width: 48px;
-            height: 48px;
-            background: var(--surface-light);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 24px;
-        }
-
-        .recording-info {
-            flex: 1;
-        }
-
-        .recording-name {
-            font-weight: 600;
-            margin-bottom: 4px;
-        }
-
-        .recording-meta {
-            font-size: 12px;
-            color: var(--text-secondary);
-            display: flex;
-            gap: 12px;
-        }
-
-        .recording-actions {
-            display: flex;
-            gap: 8px;
-        }
-
-        .action-btn {
-            width: 36px;
-            height: 36px;
-            border-radius: 8px;
-            border: none;
-            background: var(--surface-light);
-            color: var(--text);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s;
-        }
-
-        .action-btn:hover {
-            background: var(--primary);
-        }
-
-        .toast {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%) translateY(-100px);
-            background: var(--surface);
-            color: var(--text);
-            padding: 12px 24px;
-            border-radius: 12px;
-            font-size: 14px;
-            font-weight: 500;
-            border: 1px solid var(--border);
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-            z-index: 1000;
-            opacity: 0;
-            transition: all 0.3s;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .toast.show {
-            opacity: 1;
-            transform: translateX(-50%) translateY(0);
-        }
-
-        .toast.success { border-color: var(--success); color: var(--success); }
-        .toast.error { border-color: var(--error); color: var(--error); }
-
-        .setting-item {
-            padding: 16px;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .setting-label {
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 12px;
-            display: block;
-        }
-
-        .setting-options {
-            display: flex;
-            gap: 8px;
             flex-wrap: wrap;
         }
 
-        .option-btn {
-            padding: 8px 16px;
-            border-radius: 8px;
-            border: 1px solid var(--border);
-            background: var(--bg);
-            color: var(--text-secondary);
-            font-size: 13px;
+        .ctrl-btn {
+            flex: 1;
+            background: #fefefe;
+            border: 1px solid #e9edf2;
+            border-radius: 56px;
+            padding: 16px 0;
+            font-size: 1rem;
+            font-weight: 550;
+            color: #1e293b;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.02);
+            transition: all 0.15s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
             cursor: pointer;
-            transition: all 0.2s;
+            backdrop-filter: blur(2px);
         }
 
-        .option-btn.active {
-            background: var(--primary);
+        .ctrl-btn:active {
+            background: #f1f5f9;
+            transform: scale(0.97);
+        }
+
+        .ctrl-btn.primary {
+            background: #1e293b;
+            border-color: #1e293b;
             color: white;
-            border-color: var(--primary);
+            box-shadow: 0 10px 18px -8px #1e293b80;
         }
 
-        .debug-panel {
-            position: fixed;
-            bottom: 100px;
-            left: 16px;
-            right: 16px;
-            background: rgba(0,0,0,0.9);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 12px;
-            font-size: 11px;
-            font-family: monospace;
-            color: var(--text-secondary);
-            z-index: 50;
-            max-height: 150px;
-            overflow-y: auto;
+        .ctrl-btn.primary:active {
+            background: #0f172a;
+        }
+
+        .ctrl-btn:disabled {
+            opacity: 0.4;
+            filter: grayscale(0.5);
+            pointer-events: none;
+        }
+
+        /* 文件上传区域 */
+        .upload-area {
+            margin: 0 24px 20px 24px;
+            padding: 16px;
+            border: 2px dashed #cbd5e1;
+            border-radius: 28px;
+            text-align: center;
+            background: #f8fafc;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .upload-area:hover {
+            background: #f1f5f9;
+        }
+        .upload-area i {
+            font-size: 2rem;
+            color: #4f46e5;
+            margin-bottom: 8px;
+        }
+        .upload-area p {
+            color: #475569;
+            font-weight: 500;
+        }
+        #fileInput {
             display: none;
         }
-
-        .debug-panel.show {
-            display: block;
+        .model-loading {
+            font-size: 0.85rem;
+            color: #2563eb;
+            margin-top: 8px;
         }
 
-        .debug-line {
-            margin-bottom: 4px;
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px 8px 24px;
         }
 
-        .debug-line.error { color: var(--error); }
-        .debug-line.success { color: var(--success); }
-        .debug-line.info { color: var(--primary); }
+        .history-header h2 {
+            font-size: 1.25rem;
+            font-weight: 590;
+            color: #1e293b;
+        }
+
+        .history-header button {
+            background: none;
+            border: none;
+            color: #4f46e5;
+            font-size: 0.95rem;
+            font-weight: 500;
+            padding: 8px 12px;
+            border-radius: 30px;
+            background: #f1f4f9;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+
+        .history-list {
+            padding: 0 24px 30px 24px;
+            max-height: 360px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .history-item {
+            background: #ffffff;
+            border-radius: 22px;
+            padding: 18px 16px;
+            border: 1px solid #edf2f7;
+            box-shadow: 0 6px 12px -8px rgba(0,0,0,0.08);
+            transition: 0.1s;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .history-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+
+        .history-meta i {
+            width: 16px;
+        }
+
+        .history-text {
+            font-size: 1rem;
+            font-weight: 450;
+            color: #0f172a;
+            background: #f8fafc;
+            padding: 14px;
+            border-radius: 18px;
+            line-height: 1.4;
+            word-break: break-word;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+
+        .history-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
+            margin-top: 4px;
+            flex-wrap: wrap;
+        }
+
+        .history-actions button {
+            background: transparent;
+            border: none;
+            color: #4b5563;
+            font-size: 1.1rem;
+            width: 44px;
+            height: 44px;
+            border-radius: 40px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: #f1f4f9;
+            cursor: pointer;
+            transition: 0.1s;
+        }
+
+        .history-actions button:active {
+            background: #e2e8f0;
+        }
+
+        .toast-message {
+            position: fixed;
+            bottom: 30px;
+            left: 20px;
+            right: 20px;
+            max-width: 400px;
+            margin: 0 auto;
+            background: #1e293b;
+            color: white;
+            padding: 14px 24px;
+            border-radius: 60px;
+            font-size: 0.95rem;
+            text-align: center;
+            box-shadow: 0 20px 30px -10px black;
+            opacity: 0;
+            transition: 0.2s;
+            pointer-events: none;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
     <div class="app-container">
-        <header class="header">
-            <div class="brand">
-                <div class="logo">🎙️</div>
-                <div class="brand-text">
-                    <h1>VoiceScribe Local</h1>
-                    <div class="tag">
-                        <span>●</span>
-                        <span>纯本地处理 · 零网络依赖</span>
-                    </div>
-                </div>
+        <div class="header">
+            <h1>
+                <i class="fas fa-microphone-lines"></i> 语音转写·离线版
+            </h1>
+            <div class="lang-selector" id="langSelector">
+                <button class="lang-option active" data-lang="zh-CN">🇨🇳 中文</button>
+                <button class="lang-option" data-lang="en-US">🇬🇧 英文</button>
             </div>
-            <div class="status-pill ready" id="statusPill">
-                <span>●</span>
-                <span id="statusText">就绪</span>
-            </div>
-        </header>
+        </div>
 
+        <!-- 实时转写卡片 -->
+        <div class="live-card">
+            <div class="transcript-label"><i class="far fa-comment-dots"></i> 实时转写</div>
+            <div class="live-transcript" id="liveTranscript">点击开始，对着麦克风说话...</div>
+            <div class="status-badge" id="statusBadge"><i class="fas fa-circle"></i> 空闲</div>
+        </div>
+
+        <!-- 控制按钮组（实时） -->
         <div class="control-panel">
-            <select class="lang-select" id="langSelect" onchange="changeLanguage(this.value)">
-                <option value="zh-CN">🇨🇳 普通话</option>
-                <option value="en-US">🇺🇸 English</option>
-                <option value="zh-CN,en-US">🌐 中英混合</option>
-                <option value="yue-HK">🇭🇰 粤语</option>
-                <option value="ja-JP">🇯🇵 日语</option>
-            </select>
-
-            <button class="record-btn" id="recordBtn" onclick="toggleRecording()">
-                <div class="btn-bg"></div>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                    <line x1="12" y1="19" x2="12" y2="23"></line>
-                    <line x1="8" y1="23" x2="16" y2="23"></line>
-                </svg>
-            </button>
-
-            <div class="secondary-actions">
-                <button class="icon-btn" id="historyBtn" onclick="showHistory()" title="历史记录">
-                    <div class="badge"></div>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"></path>
-                        <path d="M8.5 8.5v.01"></path>
-                        <path d="M16 15.5v.01"></path>
-                        <path d="M12 12v.01"></path>
-                        <path d="M11 17v.01"></path>
-                        <path d="M7 14v.01"></path>
-                    </svg>
-                </button>
-                <button class="icon-btn" onclick="showSettings()" title="设置">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="3"></circle>
-                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                    </svg>
-                </button>
-                <button class="icon-btn" onclick="toggleDebug()" title="调试">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
-                    </svg>
-                </button>
-            </div>
+            <button class="ctrl-btn" id="startBtn" title="开始录音 (请求麦克风)"><i class="fas fa-play"></i> 开始</button>
+            <button class="ctrl-btn" id="stopBtn" disabled><i class="fas fa-stop"></i> 停止</button>
         </div>
 
-        <div class="visualizer-panel" id="visualizerPanel">
-            <canvas class="visualizer-canvas" id="visualizer"></canvas>
-            <div class="visualizer-overlay">
-                <div class="time-display" id="timeDisplay">00:00</div>
-            </div>
+        <!-- 新增：上传音频区域（离线识别） -->
+        <div class="upload-area" id="uploadArea">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <p>点击或拖拽上传音频文件</p>
+            <p style="font-size:0.8rem; color:#64748b;">支持 mp3, m4a, wav, webm 等 (离线识别，首次需下载模型)</p>
+            <div id="modelStatus" class="model-loading">⚡ 模型未加载，点击上传后自动加载</div>
+        </div>
+        <input type="file" id="fileInput" accept="audio/*">
+
+        <!-- 历史记录标题 & 全部导出 -->
+        <div class="history-header">
+            <h2><i class="far fa-clock" style="margin-right: 6px;"></i> 本地记录</h2>
+            <button id="exportAllBtn"><i class="fas fa-download"></i> 全部导出</button>
         </div>
 
-        <div class="transcript-container">
-            <div class="transcript-header">
-                <div class="transcript-title">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                        <line x1="16" y1="13" x2="8" y2="13"></line>
-                        <line x1="16" y1="17" x2="8" y2="17"></line>
-                        <polyline points="10 9 9 9 8 9"></polyline>
-                    </svg>
-                    实时转写
-                </div>
-                <div class="transcript-stats">
-                    <span id="wordCount">0 字</span>
-                    <span id="segCount">0 段</span>
-                </div>
-            </div>
-            <div class="transcript-content" id="transcriptContent">
-                <div class="empty-state" id="emptyState">
-                    <div class="empty-icon">🎤</div>
-                    <div style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">准备就绪</div>
-                    <div style="font-size: 13px; opacity: 0.7; line-height: 1.6;">
-                        点击麦克风开始录音<br>
-                        使用浏览器内置语音识别引擎
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="bottom-bar">
-            <button class="tool-btn" id="copyBtn" onclick="copyText()" disabled>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                </svg>
-                复制
-            </button>
-            <button class="tool-btn" id="exportBtn" onclick="exportText()" disabled>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                    <polyline points="7 10 12 15 17 10"></polyline>
-                    <line x1="12" y1="15" x2="12" y2="3"></line>
-                </svg>
-                导出
-            </button>
-            <button class="tool-btn" onclick="clearAll()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="3 6 5 6 21 6"></polyline>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                </svg>
-                清空
-            </button>
+        <!-- 历史列表 动态渲染 -->
+        <div class="history-list" id="historyList">
+            <!-- 由js填充 -->
+            <div style="text-align: center; color: #94a3b8; padding: 30px 0;">暂无转写记录</div>
         </div>
     </div>
 
-    <!-- 历史记录模态框 -->
-    <div class="modal" id="historyModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <div class="modal-title">📚 历史记录</div>
-                <button class="close-btn" onclick="closeHistory()">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                </button>
-            </div>
-            <div class="modal-body" id="historyList">
-                <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
-                    暂无历史记录
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 设置模态框 -->
-    <div class="modal" id="settingsModal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <div class="modal-title">⚙️ 设置</div>
-                <button class="close-btn" onclick="closeSettings()">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                </button>
-            </div>
-            <div class="modal-body">
-                <div class="setting-item">
-                    <label class="setting-label">识别引擎</label>
-                    <div class="setting-options">
-                        <button class="option-btn active" onclick="setEngine('webspeech', this)">🌐 Web Speech</button>
-                        <button class="option-btn" onclick="setEngine('whisper', this)" disabled>🧠 Whisper (WASM)</button>
-                    </div>
-                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">
-                        Web Speech: 使用浏览器内置引擎，需要网络连接<br>
-                        Whisper: 纯本地运行，无需网络（开发中）
-                    </div>
-                </div>
-                
-                <div class="setting-item">
-                    <label class="setting-label">自动保存</label>
-                    <div class="setting-options">
-                        <button class="option-btn active" onclick="setAutoSave(true, this)">开启</button>
-                        <button class="option-btn" onclick="setAutoSave(false, this)">关闭</button>
-                    </div>
-                </div>
-
-                <div class="setting-item">
-                    <label class="setting-label">音频质量</label>
-                    <div class="setting-options">
-                        <button class="option-btn" onclick="setQuality('low', this)">省空间</button>
-                        <button class="option-btn active" onclick="setQuality('high', this)">高质量</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="toast" id="toast"></div>
-    <div class="debug-panel" id="debugPanel"></div>
+    <!-- 轻提示toast -->
+    <div id="toast" class="toast-message"></div>
 
     <script>
-        // ==================== 修复后的语音识别引擎 ====================
-        
-        class FixedSpeechRecognizer {
-            constructor() {
-                this.recognition = null;
-                this.isRecording = false;
-                this.currentLang = 'zh-CN';
-                this.segments = [];
-                this.currentSegment = null;
-                this.audioChunks = [];
-                this.mediaRecorder = null;
-                this.stream = null;
-                
-                // 检查浏览器支持
-                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                this.isSupported = !!SpeechRecognition;
-                
-                if (this.isSupported) {
-                    this.initRecognition();
-                }
+        (function() {
+            // -------------------- 初始化 --------------------
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                alert('您的浏览器不支持实时语音识别，请使用 Edge/Chrome/Safari 最新版。\n但文件上传离线识别功能仍可使用（需要 Transformers.js 支持）。');
             }
 
-            initRecognition() {
-                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                this.recognition = new SpeechRecognition();
-                
-                // 关键配置：连续识别 + 中间结果
-                this.recognition.continuous = true;
-                this.recognition.interimResults = true;
-                this.recognition.maxAlternatives = 1;
-                this.recognition.lang = this.currentLang;
+            // DOM 元素
+            const liveTranscriptEl = document.getElementById('liveTranscript');
+            const statusBadge = document.getElementById('statusBadge');
+            const startBtn = document.getElementById('startBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            const langSelector = document.getElementById('langSelector');
+            const historyListEl = document.getElementById('historyList');
+            const toastEl = document.getElementById('toast');
+            const exportAllBtn = document.getElementById('exportAllBtn');
+            const uploadArea = document.getElementById('uploadArea');
+            const fileInput = document.getElementById('fileInput');
+            const modelStatus = document.getElementById('modelStatus');
 
-                // 关键：立即处理结果，不要等待
-                this.recognition.onresult = (event) => {
-                    this.handleResult(event);
-                };
+            // 全局状态
+            let currentStream = null;
+            let mediaRecorder = null;
+            let recognition = null;
+            let isRecording = false;
+            let userStopped = false;
+            let finalTranscript = '';
+            let audioChunks = [];
+            let currentLanguage = 'zh-CN'; // 默认中文
 
-                this.recognition.onerror = (event) => {
-                    this.handleError(event);
-                };
+            // IndexedDB
+            const DB_NAME = 'VoiceTranscriptDB';
+            const STORE_NAME = 'recordings';
+            const DB_VERSION = 3;
+            let db = null;
 
-                this.recognition.onstart = () => {
-                    debugLog('语音识别引擎已启动', 'success');
-                    this.isRecording = true;
-                };
+            // Transformers.js 相关
+            let pipeline = null;
+            let isModelLoading = false;
 
-                this.recognition.onend = () => {
-                    debugLog('语音识别引擎停止', 'info');
-                    // 如果仍在录音状态，自动重启（防止意外中断）
-                    if (this.isRecording) {
-                        debugLog('尝试自动重启识别引擎...', 'info');
-                        setTimeout(() => {
-                            if (this.isRecording) {
-                                try {
-                                    this.recognition.start();
-                                } catch(e) {
-                                    debugLog('重启失败: ' + e.message, 'error');
-                                }
-                            }
-                        }, 300);
-                    }
-                };
-            }
-
-            handleResult(event) {
-                const results = event.results;
-                const lastResult = results[results.length - 1];
-                const transcript = lastResult[0].transcript;
-                const isFinal = lastResult.isFinal;
-                const confidence = lastResult[0].confidence || 0.9;
-
-                debugLog(`识别结果: "${transcript.substring(0, 30)}..." final=${isFinal}`, 'info');
-
-                // 立即更新 UI，不要等待
-                if (this.onResult) {
-                    this.onResult({
-                        text: transcript,
-                        isFinal: isFinal,
-                        confidence: confidence,
-                        timestamp: Date.now()
-                    });
-                }
-
-                // 如果是最终结果，保存到段落
-                if (isFinal && transcript.trim()) {
-                    this.segments.push({
-                        text: transcript,
-                        timestamp: Date.now(),
-                        confidence: confidence
-                    });
-                    
-                    // 开始新段落
-                    if (this.onSegmentEnd) {
-                        this.onSegmentEnd();
-                    }
-                }
-            }
-
-            handleError(event) {
-                const errorMessages = {
-                    'no-speech': '未检测到语音，请靠近麦克风说话',
-                    'audio-capture': '无法访问麦克风',
-                    'not-allowed': '麦克风权限被拒绝',
-                    'network': '网络错误（Web Speech 需要网络）',
-                    'aborted': '识别已停止',
-                    'language-not-supported': '不支持当前语言'
-                };
-
-                const msg = errorMessages[event.error] || `错误: ${event.error}`;
-                debugLog(msg, 'error');
-
-                // 不中断录音，静默处理大部分错误
-                if (event.error !== 'not-allowed' && event.error !== 'audio-capture') {
-                    // 继续录音
-                }
-            }
-
-            async start() {
-                if (!this.isSupported) {
-                    throw new Error('浏览器不支持语音识别');
-                }
-
-                try {
-                    // 1. 获取麦克风权限（关键：先获取音频流）
-                    this.stream = await navigator.mediaDevices.getUserMedia({
-                        audio: {
-                            sampleRate: 16000,
-                            channelCount: 1,
-                            echoCancellation: true,
-                            noiseSuppression: true,
-                            autoGainControl: true
-                        }
-                    });
-
-                    // 2. 启动 MediaRecorder 保存音频
-                    this.mediaRecorder = new MediaRecorder(this.stream, {
-                        mimeType: 'audio/webm;codecs=opus'
-                    });
-                    
-                    this.audioChunks = [];
-                    this.mediaRecorder.ondataavailable = (e) => {
-                        if (e.data.size > 0) this.audioChunks.push(e.data);
+            // ---------- 初始化数据库 ----------
+            function openDB() {
+                return new Promise((resolve, reject) => {
+                    if (db) return resolve(db);
+                    const request = indexedDB.open(DB_NAME, DB_VERSION);
+                    request.onerror = (e) => reject('数据库打开失败');
+                    request.onsuccess = (e) => {
+                        db = e.target.result;
+                        resolve(db);
                     };
-                    
-                    this.mediaRecorder.start(1000);
-
-                    // 3. 关键：立即启动语音识别
-                    debugLog('正在启动语音识别...', 'info');
-                    this.recognition.lang = this.currentLang;
-                    this.recognition.start();
-
-                    return true;
-                } catch (err) {
-                    debugLog('启动失败: ' + err.message, 'error');
-                    throw err;
-                }
-            }
-
-            stop() {
-                this.isRecording = false;
-                
-                // 停止语音识别
-                if (this.recognition) {
-                    try {
-                        this.recognition.stop();
-                    } catch(e) {}
-                }
-
-                // 停止 MediaRecorder
-                if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-                    this.mediaRecorder.stop();
-                }
-
-                // 停止所有音轨
-                if (this.stream) {
-                    this.stream.getTracks().forEach(track => track.stop());
-                }
-
-                // 返回音频 blob
-                return new Promise((resolve) => {
-                    if (this.mediaRecorder) {
-                        this.mediaRecorder.onstop = () => {
-                            const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
-                            resolve(blob);
-                        };
-                    } else {
-                        resolve(null);
-                    }
+                    request.onupgradeneeded = (e) => {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains(STORE_NAME)) {
+                            const store = db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+                            store.createIndex('timestamp', 'timestamp', { unique: false });
+                            store.createIndex('language', 'language', { unique: false });
+                        }
+                    };
                 });
             }
 
-            setLanguage(lang) {
-                this.currentLang = lang;
-                if (this.recognition) {
-                    this.recognition.lang = lang;
-                    debugLog(`语言切换为: ${lang}`, 'info');
+            async function addRecording(blob, transcript, lang, source = 'mic') {
+                await openDB();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(STORE_NAME, 'readwrite');
+                    const store = tx.objectStore(STORE_NAME);
+                    const entry = {
+                        timestamp: Date.now(),
+                        audioBlob: blob,
+                        transcript: transcript || ' ',
+                        language: lang,
+                        source: source // 记录来源：mic 或 upload
+                    };
+                    const req = store.add(entry);
+                    req.onsuccess = () => resolve();
+                    req.onerror = (e) => reject(e);
+                });
+            }
+
+            async function getAllRecordings() {
+                await openDB();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(STORE_NAME, 'readonly');
+                    const store = tx.objectStore(STORE_NAME);
+                    const req = store.getAll();
+                    req.onsuccess = () => resolve(req.result || []);
+                    req.onerror = (e) => reject(e);
+                });
+            }
+
+            async function deleteRecording(id) {
+                await openDB();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction(STORE_NAME, 'readwrite');
+                    const store = tx.objectStore(STORE_NAME);
+                    const req = store.delete(id);
+                    req.onsuccess = () => resolve();
+                    req.onerror = (e) => reject(e);
+                });
+            }
+
+            // ---------- 渲染历史列表 ----------
+            async function renderHistory() {
+                try {
+                    const records = await getAllRecordings();
+                    if (records.length === 0) {
+                        historyListEl.innerHTML = '<div style="text-align: center; color: #94a3b8; padding: 30px 0;">暂无转写记录</div>';
+                        return;
+                    }
+                    records.sort((a,b) => b.timestamp - a.timestamp);
+                    let html = '';
+                    records.forEach(rec => {
+                        const date = new Date(rec.timestamp).toLocaleString(undefined, { hour12: false, hour: '2-digit', minute:'2-digit', day:'2-digit', month:'2-digit' });
+                        const preview = rec.transcript.length > 80 ? rec.transcript.slice(0,80)+'…' : rec.transcript;
+                        html += `
+                        <div class="history-item" data-id="${rec.id}">
+                            <div class="history-meta">
+                                <i class="far fa-calendar-alt"></i> ${date}  ·  ${rec.language === 'zh-CN' ? '中文' : '英文'} · ${rec.source === 'mic' ? '🎤实时' : '📁上传'}
+                            </div>
+                            <div class="history-text">${escapeHtml(rec.transcript) || '无文本'}</div>
+                            <div class="history-actions">
+                                <button class="play-audio" title="播放录音"><i class="fas fa-play"></i></button>
+                                <button class="export-text" title="导出文本"><i class="fas fa-file-alt"></i></button>
+                                <button class="export-audio" title="导出音频"><i class="fas fa-download"></i></button>
+                                <button class="delete-entry" title="删除"><i class="fas fa-trash-alt"></i></button>
+                            </div>
+                        </div>`;
+                    });
+                    historyListEl.innerHTML = html;
+
+                    document.querySelectorAll('.history-item').forEach(item => {
+                        const id = Number(item.dataset.id);
+                        const record = records.find(r => r.id === id);
+
+                        item.querySelector('.play-audio')?.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            if (record?.audioBlob) {
+                                const url = URL.createObjectURL(record.audioBlob);
+                                const audio = new Audio(url);
+                                audio.play().catch(e => showToast('播放失败：' + e.message));
+                                setTimeout(() => URL.revokeObjectURL(url), 10000);
+                            } else {
+                                showToast('无音频数据');
+                            }
+                        });
+
+                        item.querySelector('.export-text')?.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            if (record?.transcript) {
+                                // 添加 BOM 解决乱码
+                                const blob = new Blob(['\uFEFF' + record.transcript], { type: 'text/plain;charset=utf-8' });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `transcript_${record.timestamp}.txt`;
+                                a.click();
+                                URL.revokeObjectURL(url);
+                                showToast('文本已导出');
+                            } else {
+                                showToast('无文本内容');
+                            }
+                        });
+
+                        item.querySelector('.export-audio')?.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            if (record?.audioBlob) {
+                                const url = URL.createObjectURL(record.audioBlob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `audio_${record.timestamp}.webm`;
+                                a.click();
+                                URL.revokeObjectURL(url);
+                                showToast('音频已导出');
+                            } else {
+                                showToast('无音频数据');
+                            }
+                        });
+
+                        item.querySelector('.delete-entry')?.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            await deleteRecording(id);
+                            renderHistory();
+                            showToast('已删除');
+                        });
+                    });
+                } catch (e) {
+                    console.error(e);
                 }
             }
-        }
 
-        // ==================== 应用逻辑 ====================
-
-        const recognizer = new FixedSpeechRecognizer();
-        let isRecording = false;
-        let recordingStartTime = null;
-        let recordingTimer = null;
-        let audioBlob = null;
-        let history = JSON.parse(localStorage.getItem('vs_history') || '[]');
-        let settings = JSON.parse(localStorage.getItem('vs_settings') || '{"autoSave": true, "quality": "high"}');
-        let currentInterimText = '';
-
-        // DOM 元素
-        const recordBtn = document.getElementById('recordBtn');
-        const statusPill = document.getElementById('statusPill');
-        const statusText = document.getElementById('statusText');
-        const timeDisplay = document.getElementById('timeDisplay');
-        const visualizerPanel = document.getElementById('visualizerPanel');
-        const transcriptContent = document.getElementById('transcriptContent');
-        const emptyState = document.getElementById('emptyState');
-        const canvas = document.getElementById('visualizer');
-        const ctx = canvas.getContext('2d');
-
-        // 调试日志
-        function debugLog(msg, type = 'info') {
-            const panel = document.getElementById('debugPanel');
-            const line = document.createElement('div');
-            line.className = `debug-line ${type}`;
-            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
-            panel.appendChild(line);
-            panel.scrollTop = panel.scrollHeight;
-            console.log(`[${type}] ${msg}`);
-        }
-
-        function toggleDebug() {
-            document.getElementById('debugPanel').classList.toggle('show');
-        }
-
-        // 初始化
-        async function init() {
-            resizeCanvas();
-            window.addEventListener('resize', resizeCanvas);
-            
-            // 检查支持情况
-            if (!recognizer.isSupported) {
-                showToast('您的浏览器不支持语音识别，请使用 Chrome 或 Edge', 'error');
-                recordBtn.disabled = true;
-                return;
+            function escapeHtml(unsafe) {
+                if (!unsafe) return '';
+                return unsafe.replace(/[&<>"]/g, function(m) {
+                    if(m === '&') return '&amp;'; if(m === '<') return '&lt;'; if(m === '>') return '&gt;'; if(m === '"') return '&quot;';
+                    return m;
+                });
             }
 
-            // 设置回调
-            recognizer.onResult = onRecognitionResult;
-            recognizer.onSegmentEnd = onSegmentEnd;
-            
-            updateHistoryBadge();
-            loadSettings();
-            
-            debugLog('初始化完成，等待开始录音', 'success');
-        }
+            function showToast(msg, duration = 2000) {
+                toastEl.style.opacity = '1';
+                toastEl.innerText = msg;
+                setTimeout(() => { toastEl.style.opacity = '0'; }, duration);
+            }
 
-        function resizeCanvas() {
-            canvas.width = canvas.offsetWidth;
-            canvas.height = canvas.offsetHeight;
-        }
+            // ---------- 实时录音相关（与之前相同，略作优化）----------
+            function closeStream() {
+                if (currentStream) {
+                    currentStream.getTracks().forEach(track => track.stop());
+                    currentStream = null;
+                }
+            }
 
-        // 可视化
-        let animationId = null;
-        function startVisualizer() {
-            const bars = 30;
-            const barWidth = canvas.width / bars;
-            
-            function draw() {
-                if (!isRecording) {
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+            async function saveToDBAndCleanup() {
+                try {
+                    const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const transcript = finalTranscript.trim() || '（无语音识别文本）';
+                    await addRecording(blob, transcript, currentLanguage, 'mic');
+                    showToast('已保存到本地记录');
+                } catch (e) {
+                    console.warn('保存失败', e);
+                    showToast('保存失败');
+                } finally {
+                    closeStream();
+                    isRecording = false;
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    statusBadge.innerHTML = '<i class="fas fa-circle"></i> 空闲';
+                    statusBadge.classList.remove('recording');
+                    liveTranscriptEl.innerText = '点击开始，对着麦克风说话...';
+                    renderHistory();
+                }
+            }
+
+            function stopRecording() {
+                if (!isRecording) return;
+                userStopped = true;
+                if (recognition) {
+                    try { recognition.stop(); } catch (e) {}
+                }
+                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                    mediaRecorder.stop();
+                }
+            }
+
+            async function startRecording() {
+                if (isRecording) return;
+                finalTranscript = '';
+                audioChunks = [];
+                userStopped = false;
+
+                try {
+                    currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                } catch (err) {
+                    showToast('无法访问麦克风: ' + err.message);
                     return;
                 }
-                
-                ctx.fillStyle = '#1a1a1a';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                
-                // 生成模拟波形（实际应连接 analyser）
-                for (let i = 0; i < bars; i++) {
-                    const h = Math.random() * canvas.height * 0.6 + 10;
-                    const x = i * barWidth;
-                    const y = (canvas.height - h) / 2;
-                    
-                    const gradient = ctx.createLinearGradient(0, y, 0, y + h);
-                    gradient.addColorStop(0, '#10b981');
-                    gradient.addColorStop(1, '#3b82f6');
-                    
-                    ctx.fillStyle = gradient;
-                    ctx.fillRect(x + 2, y, barWidth - 4, h);
+
+                if (SpeechRecognition) {
+                    try {
+                        recognition = new SpeechRecognition();
+                        recognition.continuous = true;
+                        recognition.interimResults = true;
+                        recognition.lang = currentLanguage;
+                        recognition.onresult = (event) => {
+                            let final = '';
+                            let interim = '';
+                            for (let i = 0; i < event.results.length; i++) {
+                                if (event.results[i].isFinal) {
+                                    final += event.results[i][0].transcript;
+                                } else {
+                                    interim += event.results[i][0].transcript;
+                                }
+                            }
+                            finalTranscript = final;
+                            liveTranscriptEl.innerText = final + interim || '（聆听中...）';
+                        };
+                        recognition.onerror = (e) => {
+                            console.warn('识别错误:', e.error);
+                            if (!userStopped && isRecording) {
+                                setTimeout(() => {
+                                    if (!userStopped && isRecording && recognition) {
+                                        try { recognition.start(); } catch (err) {}
+                                    }
+                                }, 500);
+                            }
+                        };
+                        recognition.onend = () => {
+                            if (!userStopped && isRecording) {
+                                setTimeout(() => {
+                                    if (!userStopped && isRecording && recognition) {
+                                        try { recognition.start(); } catch (err) {}
+                                    }
+                                }, 300);
+                            }
+                        };
+                    } catch (e) {
+                        showToast('语音识别初始化失败');
+                        recognition = null;
+                    }
+                } else {
+                    recognition = null;
                 }
-                
-                animationId = requestAnimationFrame(draw);
-            }
-            
-            draw();
-        }
 
-        function stopVisualizer() {
-            if (animationId) {
-                cancelAnimationFrame(animationId);
-                animationId = null;
-            }
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
+                try {
+                    mediaRecorder = new MediaRecorder(currentStream, {
+                        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
+                    });
+                    mediaRecorder.ondataavailable = (e) => {
+                        if (e.data.size > 0) audioChunks.push(e.data);
+                    };
+                    mediaRecorder.onstop = saveToDBAndCleanup;
+                    mediaRecorder.start(200);
+                } catch (e) {
+                    showToast('媒体录制初始化失败');
+                    closeStream();
+                    return;
+                }
 
-        // 录音控制
-        async function toggleRecording() {
-            if (isRecording) {
-                await stopRecording();
-            } else {
-                await startRecording();
-            }
-        }
+                if (recognition) {
+                    try { recognition.start(); } catch (e) {
+                        showToast('识别启动失败');
+                        mediaRecorder.stop();
+                        return;
+                    }
+                }
 
-        async function startRecording() {
-            try {
-                debugLog('开始启动录音...', 'info');
-                await recognizer.start();
                 isRecording = true;
-                recordingStartTime = Date.now();
-                
-                // UI 更新
-                recordBtn.classList.add('recording');
-                visualizerPanel.classList.add('recording');
-                statusPill.className = 'status-pill recording';
-                statusText.textContent = '录音中';
-                emptyState.style.display = 'none';
-                
-                // 启动可视化
-                startVisualizer();
-                
-                // 启动计时器
-                recordingTimer = setInterval(updateTimer, 1000);
-                
-                showToast('录音已开始，请说话', 'success');
-                debugLog('录音启动成功', 'success');
-            } catch (err) {
-                showToast('启动失败: ' + err.message, 'error');
-                debugLog('启动失败: ' + err.message, 'error');
-            }
-        }
-
-        async function stopRecording() {
-            debugLog('停止录音...', 'info');
-            audioBlob = await recognizer.stop();
-            isRecording = false;
-            
-            // UI 更新
-            recordBtn.classList.remove('recording');
-            visualizerPanel.classList.remove('recording');
-            statusPill.className = 'status-pill ready';
-            statusText.textContent = '就绪';
-            
-            clearInterval(recordingTimer);
-            timeDisplay.textContent = '00:00';
-            
-            stopVisualizer();
-            
-            // 自动保存
-            if (settings.autoSave && recognizer.segments.length > 0) {
-                saveToHistory();
-            }
-            
-            showToast('录音已保存', 'success');
-            updateButtons();
-        }
-
-        function updateTimer() {
-            const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
-            const mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
-            const secs = (elapsed % 60).toString().padStart(2, '0');
-            timeDisplay.textContent = `${mins}:${secs}`;
-        }
-
-        // 识别结果处理 - 关键修复：立即更新 UI
-        let currentSegmentEl = null;
-
-        function onRecognitionResult(result) {
-            // 隐藏空状态
-            if (emptyState.style.display !== 'none') {
-                emptyState.style.display = 'none';
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                statusBadge.innerHTML = '<i class="fas fa-circle"></i> 录音中...';
+                statusBadge.classList.add('recording');
+                liveTranscriptEl.innerText = '正在聆听...';
             }
 
-            if (result.isFinal) {
-                // 最终结果：创建固定段落
-                if (currentInterimText) {
-                    // 更新现有段落为最终结果
-                    if (currentSegmentEl) {
-                        currentSegmentEl.className = 'segment';
-                        const textEl = currentSegmentEl.querySelector('.segment-text');
-                        textEl.textContent = result.text;
-                        
-                        // 移除光标
-                        const cursor = textEl.querySelector('.cursor');
-                        if (cursor) cursor.remove();
-                    }
-                    currentInterimText = '';
-                    currentSegmentEl = null;
+            // ---------- 文件上传离线识别 (Transformers.js Whisper) ----------
+            async function loadWhisperPipeline() {
+                if (pipeline) return pipeline;
+                if (isModelLoading) {
+                    showToast('模型正在加载中，请稍后...');
+                    return null;
                 }
-                
-                // 触发新段落开始（为下一句准备）
-                setTimeout(() => {
-                    if (isRecording) {
-                        createNewSegment();
-                    }
-                }, 200);
-            } else {
-                // 中间结果：实时更新
-                currentInterimText = result.text;
-                
-                if (!currentSegmentEl) {
-                    createNewSegment();
+                isModelLoading = true;
+                modelStatus.innerText = '⏳ 正在下载/加载模型（首次需下载约150MB，请耐心等待）...';
+                try {
+                    // 使用 Transformers.js 的 pipeline，选择小型模型 tiny 或 base，兼顾速度和准确性
+                    // 这里使用 'Xenova/whisper-tiny' 多语言版，支持中文和英文
+                    pipeline = await pipelineFactory('automatic-speech-recognition', 'Xenova/whisper-tiny');
+                    modelStatus.innerText = '✅ 模型已就绪，可上传音频';
+                    showToast('模型加载完成，现在可以离线识别');
+                } catch (e) {
+                    console.error(e);
+                    modelStatus.innerText = '❌ 模型加载失败，请刷新重试';
+                    showToast('模型加载失败');
+                } finally {
+                    isModelLoading = false;
                 }
-                
-                // 立即更新文本，不要等待
-                const textEl = currentSegmentEl.querySelector('.segment-text');
-                textEl.textContent = result.text;
-                
-                // 添加闪烁光标
-                if (!textEl.querySelector('.cursor')) {
-                    const cursor = document.createElement('span');
-                    cursor.className = 'cursor';
-                    textEl.appendChild(cursor);
-                }
+                return pipeline;
             }
-            
-            updateStats();
-            scrollToBottom();
-        }
 
-        function createNewSegment() {
-            currentSegmentEl = document.createElement('div');
-            currentSegmentEl.className = 'segment interim';
-            currentSegmentEl.innerHTML = `
-                <div class="segment-time">${new Date().toLocaleTimeString()}</div>
-                <div class="segment-text"></div>
-            `;
-            transcriptContent.appendChild(currentSegmentEl);
-            scrollToBottom();
-        }
+            // 由于 Transformers.js 的 pipeline 是异步工厂，我们需要从全局获取
+            // 注意：上面的 pipelineFactory 实际上是 transformers 的 pipeline 函数
+            // 我们直接用全局 pipelines
+            const { pipeline: transformersPipeline } = self?.transformers?.pipeline ? self.transformers : { pipeline: null };
+            async function getPipeline() {
+                if (!transformersPipeline) {
+                    showToast('Transformers.js 加载异常');
+                    return null;
+                }
+                return await loadWhisperPipeline();
+            }
 
-        function onSegmentEnd() {
-            // 段落结束时的清理工作
-            updateStats();
-            updateButtons();
-        }
-
-        function scrollToBottom() {
-            transcriptContent.scrollTop = transcriptContent.scrollHeight;
-        }
-
-        function updateStats() {
-            const totalChars = recognizer.segments.reduce((sum, seg) => sum + seg.text.length, 0) + currentInterimText.length;
-            document.getElementById('wordCount').textContent = totalChars + ' 字';
-            document.getElementById('segCount').textContent = recognizer.segments.length + ' 段';
-        }
-
-        function updateButtons() {
-            const hasContent = recognizer.segments.length > 0 || currentInterimText.length > 0;
-            document.getElementById('copyBtn').disabled = !hasContent;
-            document.getElementById('exportBtn').disabled = !hasContent;
-        }
-
-        // 工具函数
-        function changeLanguage(lang) {
-            recognizer.setLanguage(lang);
-            showToast(`已切换语言: ${lang}`, 'success');
-        }
-
-        function copyText() {
-            const text = recognizer.segments.map(s => s.text).join('\n');
-            if (!text) return;
-            
-            navigator.clipboard.writeText(text).then(() => {
-                showToast('已复制到剪贴板', 'success');
+            // 处理文件上传
+            uploadArea.addEventListener('click', () => {
+                fileInput.click();
             });
-        }
 
-        function exportText() {
-            const text = recognizer.segments.map(s => `[${new Date(s.timestamp).toLocaleTimeString()}] ${s.text}`).join('\n');
-            if (!text) return;
-            
-            const blob = new Blob([text], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `转写_${new Date().toLocaleDateString()}.txt`;
-            a.click();
-            showToast('已导出', 'success');
-        }
+            fileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
 
-        function clearAll() {
-            if (recognizer.segments.length === 0 && !currentInterimText) return;
-            if (!confirm('确定清空当前内容？')) return;
-            
-            recognizer.segments = [];
-            currentInterimText = '';
-            transcriptContent.innerHTML = '';
-            transcriptContent.appendChild(emptyState);
-            emptyState.style.display = 'flex';
-            updateStats();
-            updateButtons();
-            showToast('已清空', 'success');
-        }
+                // 检查模型是否可用，若未加载则先加载
+                const pipe = await getPipeline();
+                if (!pipe) {
+                    showToast('模型未就绪，请稍后重试');
+                    return;
+                }
 
-        // 历史记录
-        function saveToHistory() {
-            const item = {
-                id: Date.now(),
-                date: new Date().toLocaleString(),
-                duration: timeDisplay.textContent,
-                segments: recognizer.segments.length,
-                text: recognizer.segments.map(s => s.text).join('\n'),
-                preview: recognizer.segments[0]?.text?.slice(0, 50) + '...' || '无内容'
-            };
-            
-            history.unshift(item);
-            if (history.length > 50) history = history.slice(0, 50);
-            localStorage.setItem('vs_history', JSON.stringify(history));
-            updateHistoryBadge();
-            debugLog('已保存到历史记录', 'success');
-        }
+                showToast('正在识别，请稍候...');
+                modelStatus.innerText = '🔍 识别中...';
 
-        function updateHistoryBadge() {
-            const btn = document.getElementById('historyBtn');
-            if (history.length > 0) {
-                btn.classList.add('has-content');
-            }
-        }
+                try {
+                    // 读取文件为 ArrayBuffer
+                    const arrayBuffer = await file.arrayBuffer();
+                    // 使用 AudioContext 解码音频数据（支持大多数格式）
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
 
-        function showHistory() {
-            const modal = document.getElementById('historyModal');
-            const list = document.getElementById('historyList');
-            
-            if (history.length === 0) {
-                list.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">暂无历史记录</div>';
-            } else {
-                list.innerHTML = history.map(item => `
-                    <div class="recording-item" onclick="loadHistory(${item.id})">
-                        <div class="recording-icon">📝</div>
-                        <div class="recording-info">
-                            <div class="recording-name">${item.date}</div>
-                            <div class="recording-meta">
-                                <span>${item.duration}</span>
-                                <span>${item.segments} 段</span>
-                                <span>${item.text.length} 字</span>
-                            </div>
-                            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                                ${item.preview}
-                            </div>
-                        </div>
-                        <div class="recording-actions" onclick="event.stopPropagation()">
-                            <button class="action-btn" onclick="deleteHistory(${item.id})">🗑</button>
-                        </div>
-                    </div>
-                `).join('');
-            }
-            
-            modal.classList.add('show');
-        }
+                    // 获取音频数据（单声道，16kHz 采样率） Whisper 期望 16000 Hz mono
+                    const targetSampleRate = 16000;
+                    const offlineCtx = new OfflineAudioContext(1, audioBuffer.length * targetSampleRate / audioBuffer.sampleRate, targetSampleRate);
+                    const source = offlineCtx.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(offlineCtx.destination);
+                    source.start();
+                    const renderedBuffer = await offlineCtx.startRendering();
+                    const audioData = renderedBuffer.getChannelData(0); // Float32Array
 
-        function closeHistory() {
-            document.getElementById('historyModal').classList.remove('show');
-        }
+                    // 调用 Whisper 进行识别
+                    const language = currentLanguage === 'zh-CN' ? 'zh' : 'en';
+                    const result = await pipe(audioData, { language, task: 'transcribe' });
+                    const transcript = result.text;
 
-        function loadHistory(id) {
-            const item = history.find(h => h.id === id);
-            if (!item) return;
-            
-            // 加载到当前编辑器
-            recognizer.segments = item.text.split('\n').map((text, i) => ({
-                text: text,
-                timestamp: Date.now() + i,
-                confidence: 1
-            }));
-            
-            // 重新渲染
-            transcriptContent.innerHTML = '';
-            recognizer.segments.forEach(seg => {
-                const div = document.createElement('div');
-                div.className = 'segment';
-                div.innerHTML = `
-                    <div class="segment-time">${new Date(seg.timestamp).toLocaleTimeString()}</div>
-                    <div class="segment-text">${escapeHtml(seg.text)}</div>
-                `;
-                transcriptContent.appendChild(div);
+                    // 将原始文件 Blob 保存到 IndexedDB（作为音频记录）
+                    const originalBlob = new Blob([arrayBuffer], { type: file.type });
+                    await addRecording(originalBlob, transcript, currentLanguage, 'upload');
+
+                    // 更新实时显示
+                    liveTranscriptEl.innerText = transcript;
+                    showToast('识别完成，已保存');
+                    renderHistory();
+                } catch (err) {
+                    console.error(err);
+                    showToast('识别失败：' + err.message);
+                } finally {
+                    modelStatus.innerText = '✅ 模型已就绪，可继续上传';
+                    fileInput.value = ''; // 清空以便重新选择
+                }
             });
-            
-            emptyState.style.display = 'none';
-            updateStats();
-            updateButtons();
-            closeHistory();
-            showToast('已加载历史记录', 'success');
-        }
 
-        function deleteHistory(id) {
-            history = history.filter(h => h.id !== id);
-            localStorage.setItem('vs_history', JSON.stringify(history));
-            showHistory();
-            updateHistoryBadge();
-            showToast('已删除', 'success');
-        }
+            // ---------- 事件绑定 ----------
+            startBtn.addEventListener('click', startRecording);
+            stopBtn.addEventListener('click', stopRecording);
 
-        // 设置
-        function showSettings() {
-            document.getElementById('settingsModal').classList.add('show');
-        }
+            langSelector.addEventListener('click', (e) => {
+                const btn = e.target.closest('.lang-option');
+                if (!btn) return;
+                const lang = btn.dataset.lang;
+                if (!lang) return;
+                document.querySelectorAll('.lang-option').forEach(opt => opt.classList.remove('active'));
+                btn.classList.add('active');
+                currentLanguage = lang;
+                showToast(`语言切换为 ${lang === 'zh-CN' ? '中文' : '英文'}`);
+            });
 
-        function closeSettings() {
-            document.getElementById('settingsModal').classList.remove('show');
-        }
+            exportAllBtn.addEventListener('click', async () => {
+                try {
+                    const records = await getAllRecordings();
+                    if (records.length === 0) {
+                        showToast('暂无记录');
+                        return;
+                    }
+                    let content = '';
+                    records.sort((a,b) => a.timestamp - b.timestamp).forEach(r => {
+                        const date = new Date(r.timestamp).toLocaleString();
+                        content += `--- ${date} (${r.language}) [${r.source === 'mic' ? '实时' : '上传'}] ---\n${r.transcript}\n\n`;
+                    });
+                    const blob = new Blob(['\uFEFF' + content], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `全部转写_${Date.now()}.txt`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    showToast('全部文本已导出');
+                } catch (e) {
+                    showToast('导出失败');
+                }
+            });
 
-        function setEngine(engine, btn) {
-            updateActiveButton(btn);
-            showToast(engine === 'webspeech' ? '使用 Web Speech API' : 'Whisper 模式开发中', 'success');
-        }
+            // 初始化数据库并渲染历史
+            openDB().then(() => {
+                renderHistory();
+            }).catch(e => {
+                console.error(e);
+                showToast('IndexedDB初始化失败，存储将不可用');
+            });
 
-        function setAutoSave(value, btn) {
-            settings.autoSave = value;
-            saveSettings();
-            updateActiveButton(btn);
-        }
-
-        function setQuality(quality, btn) {
-            settings.quality = quality;
-            saveSettings();
-            updateActiveButton(btn);
-        }
-
-        function updateActiveButton(activeBtn) {
-            const parent = activeBtn.parentElement;
-            parent.querySelectorAll('.option-btn').forEach(btn => btn.classList.remove('active'));
-            activeBtn.classList.add('active');
-        }
-
-        function saveSettings() {
-            localStorage.setItem('vs_settings', JSON.stringify(settings));
-        }
-
-        function loadSettings() {
-            // 应用设置到 UI
-        }
-
-        // 工具函数
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        function showToast(message, type = 'info') {
-            const toast = document.getElementById('toast');
-            toast.textContent = message;
-            toast.className = `toast ${type} show`;
-            setTimeout(() => toast.classList.remove('show'), 3000);
-        }
-
-        // 初始化
-        window.addEventListener('DOMContentLoaded', init);
-
-        // 防止误关闭
-        window.onbeforeunload = (e) => {
-            if (isRecording) {
-                e.preventDefault();
-                e.returnValue = '';
-            }
-        };
+            // 预加载模型（可选，提升用户体验）
+            // 延迟加载，避免影响页面启动速度
+            setTimeout(() => {
+                if (transformersPipeline) {
+                    // 不阻塞，静默加载
+                    getPipeline().catch(() => {});
+                }
+            }, 2000);
+        })();
     </script>
 </body>
 </html>

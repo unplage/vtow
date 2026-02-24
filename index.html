@@ -4,9 +4,23 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>语音转写 · 离线版 (Whisper)</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <!-- Transformers.js 2.6.0 -->
-    <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0"></script>
+    <!-- 使用国内 BootCDN 加载 Font Awesome (原 cloudflare 可能被屏蔽) -->
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    
+    <!-- 在加载 Transformers.js 前设置 HuggingFace 镜像源 (国内加速) -->
+    <script>
+        (function() {
+            if (typeof self !== 'undefined') {
+                self.env = self.env || {};
+                // 设置镜像站，所有模型下载将通过此域名
+                self.env.remoteHost = 'https://hf-mirror.com/';
+                // 可选：若镜像路径与官方不一致可调整 remotePathPattern，但 hf-mirror 兼容官方路径，无需额外设置
+            }
+        })();
+    </script>
+    <!-- 使用国内可访问的 CDN 加载 Transformers.js 2.6.0 (unpkg) -->
+    <script src="https://unpkg.com/@xenova/transformers@2.6.0"></script>
+    
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {

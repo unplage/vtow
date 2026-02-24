@@ -3,11 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>语音转写 · 专业版（进度条修复）</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <!-- Transformers.js 使用 CDN（也可替换为本地路径） -->
-    <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0"></script>
+    <title>语音转写 · 专业版（本地库）</title>
+    <!-- 本地 Font Awesome -->
+    <link rel="stylesheet" href="css/all.min.css">
+    <!-- 本地 Transformers.js -->
+    <script src="js/transformers.min.js"></script>
     <style>
+        /* 样式保持不变，略 (与上一版相同) */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -482,7 +484,7 @@
                 liveTranscriptEl.innerText = '正在聆听...';
             }
 
-            // ---------- 文件上传离线识别 (Transformers.js Whisper) 修复进度条 ----------
+            // ---------- 文件上传离线识别 (Transformers.js Whisper) 本地版本 ----------
             async function loadWhisperPipeline() {
                 if (pipeline) return pipeline;
                 if (isModelLoading) {
@@ -495,17 +497,16 @@
                 progressFill.style.width = '0%';
 
                 try {
-                    // 检查 Transformers.js 是否可用
+                    // 检查 Transformers.js 是否可用（此时应为本地加载）
                     if (!self.transformers || !self.transformers.pipeline) {
-                        throw new Error('Transformers.js 库未正确加载，请检查网络或刷新页面。');
+                        throw new Error('Transformers.js 库未正确加载，请检查本地文件路径。');
                     }
                     const { pipeline: transformersPipeline } = self.transformers;
 
-                    // 使用进度回调，兼容各种状态
+                    // 使用进度回调
                     pipeline = await transformersPipeline('automatic-speech-recognition', 'Xenova/whisper-tiny', {
                         progress_callback: (progress) => {
-                            console.log('Progress event:', progress); // 调试时可查看控制台
-                            // 根据实际 progress 对象调整状态判断
+                            console.log('Progress event:', progress);
                             if (progress.status === 'progress' || progress.status === 'downloading') {
                                 if (progress.total) {
                                     const percent = (progress.loaded / progress.total) * 100;
@@ -515,7 +516,6 @@
                             } else if (progress.status === 'ready' || progress.status === 'done' || progress.status === 'success') {
                                 progressFill.style.width = '100%';
                                 modelStatus.innerText = '✅ 模型已就绪，可上传音频';
-                                // 延迟隐藏进度条，让用户看到完成状态
                                 setTimeout(() => {
                                     progressContainer.style.display = 'none';
                                 }, 1500);
@@ -540,13 +540,10 @@
                 return await loadWhisperPipeline();
             }
 
-            // 点击上传区域时，如果模型未加载则触发加载
             uploadArea.addEventListener('click', async () => {
                 if (!pipeline && !isModelLoading) {
-                    // 先尝试加载模型，不阻塞文件选择
                     loadWhisperPipeline().catch(() => {});
                 }
-                // 仍然打开文件选择
                 fileInput.click();
             });
 
@@ -554,7 +551,6 @@
                 const file = e.target.files[0];
                 if (!file) return;
 
-                // 确保模型已就绪
                 const pipe = await getPipeline();
                 if (!pipe) {
                     showToast('模型未就绪，请稍后重试');
@@ -612,7 +608,6 @@
                 showToast(`语言切换为 ${lang === 'zh-CN' ? '中文' : '英文'}`);
             });
 
-            // 全部导出功能（已修复）
             exportAllBtn.addEventListener('click', async () => {
                 try {
                     const records = await getAllRecordings();
@@ -641,7 +636,7 @@
                 }
             });
 
-            // 初始化数据库并渲染历史
+            // 初始化数据库
             openDB().then(() => {
                 renderHistory();
             }).catch(e => {
@@ -649,7 +644,7 @@
                 showToast('IndexedDB初始化失败，存储将不可用');
             });
 
-            // 预加载模型（提升体验）
+            // 预加载模型
             setTimeout(() => {
                 if (self.transformers?.pipeline) {
                     loadWhisperPipeline().catch(() => {});

@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>语音转写 · 专业修复版</title>
+    <title>语音转写 · 专业修复版（模型加载优化）</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Transformers.js 需确保正确加载 -->
     <script src="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0"></script>
     <style>
-        /* 样式保持与之前一致，未做改动 */
+        /* 样式与之前相同，增加进度条样式 */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -70,6 +71,12 @@
         .upload-area p { color: #475569; font-weight: 500; }
         #fileInput { display: none; }
         .model-loading { font-size: 0.85rem; color: #2563eb; margin-top: 8px; }
+        .progress-bar {
+            width: 100%; height: 6px; background: #e2e8f0; border-radius: 10px; margin-top: 10px; overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%; background: #4f46e5; width: 0%; transition: width 0.2s;
+        }
         .history-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px 8px 24px; }
         .history-header h2 { font-size: 1.25rem; font-weight: 590; color: #1e293b; }
         .history-header button {
@@ -130,6 +137,9 @@
             <p>点击或拖拽上传音频文件</p>
             <p style="font-size:0.8rem; color:#64748b;">支持 mp3, m4a, wav, webm 等 (离线识别，首次需下载模型)</p>
             <div id="modelStatus" class="model-loading">⚡ 模型未加载，点击上传后自动加载</div>
+            <div id="progressContainer" class="progress-bar" style="display: none;">
+                <div id="progressFill" class="progress-fill"></div>
+            </div>
         </div>
         <input type="file" id="fileInput" accept="audio/*">
 
@@ -167,6 +177,8 @@
             const uploadArea = document.getElementById('uploadArea');
             const fileInput = document.getElementById('fileInput');
             const modelStatus = document.getElementById('modelStatus');
+            const progressContainer = document.getElementById('progressContainer');
+            const progressFill = document.getElementById('progressFill');
 
             // 全局状态
             let currentStream = null;
@@ -174,7 +186,6 @@
             let recognition = null;
             let isRecording = false;
             let userStopped = false;
-            // 改用数组累积 final 结果，避免因识别重启导致丢失
             let finalTranscriptSegments = [];
             let audioChunks = [];
             let currentLanguage = 'zh-CN';
@@ -292,7 +303,6 @@
 
                         item.querySelector('.export-text')?.addEventListener('click', (e) => {
                             e.stopPropagation();
-                            // 添加 BOM 解决乱码
                             const blob = new Blob(['\uFEFF' + record.transcript], { type: 'text/plain;charset=utf-8' });
                             const url = URL.createObjectURL(blob);
                             const a = document.createElement('a');
@@ -351,7 +361,6 @@
             async function saveToDBAndCleanup() {
                 try {
                     const blob = new Blob(audioChunks, { type: 'audio/webm' });
-                    // 从片段数组中组合完整文本
                     const fullTranscript = finalTranscriptSegments.join(' ').trim() || '（无语音识别文本）';
                     await addRecording(blob, fullTranscript, currentLanguage, 'mic');
                     showToast('已保存到本地记录');
@@ -383,7 +392,6 @@
 
             async function startRecording() {
                 if (isRecording) return;
-                // 重置累积数组
                 finalTranscriptSegments = [];
                 audioChunks = [];
                 userStopped = false;
@@ -403,20 +411,9 @@
                         recognition.lang = currentLanguage;
                         recognition.onresult = (event) => {
                             let interim = '';
-                            // 遍历 results，将新产生的 final 片段加入数组
                             for (let i = 0; i < event.results.length; i++) {
                                 const result = event.results[i];
                                 if (result.isFinal) {
-                                    // 如果这个片段还没有被记录（避免重复），可以简单通过索引判断，但这里简化：直接按顺序添加
-                                    // 但 event.results 可能会重复返回之前的 final，因此需要去重。
-                                    // 更稳健的做法是维护一个已处理的结果索引，但为了简化，我们采用累积方式：
-                                    // 每次都将所有 final 重新拼接，但这样可能丢失之前因重启而丢失的结果。
-                                    // 改用数组存储每个 final 片段的文本，并仅在首次出现时加入。
-                                    // 由于无法直接判断是否重复，我们使用一个临时方案：根据结果长度简单去重（不完美）。
-                                    // 实际生产环境建议使用 resultIndex 和 result.length 等属性，但浏览器支持不一。
-                                    // 这里我们采用简单方法：将新的 final 文本追加到数组中，但可能导致重复。
-                                    // 为了演示，我们接受微小重复，但确保不会丢失。
-                                    // 更好的方式：比较当前结果是否已经存在于 finalTranscriptSegments 的最后一项，避免完全相同重复。
                                     const text = result[0].transcript;
                                     if (finalTranscriptSegments.length === 0 || finalTranscriptSegments[finalTranscriptSegments.length-1] !== text) {
                                         finalTranscriptSegments.push(text);
@@ -486,7 +483,7 @@
                 liveTranscriptEl.innerText = '正在聆听...';
             }
 
-            // ---------- 文件上传离线识别 (Transformers.js Whisper) ----------
+            // ---------- 文件上传离线识别 (Transformers.js Whisper) 修复版 ----------
             async function loadWhisperPipeline() {
                 if (pipeline) return pipeline;
                 if (isModelLoading) {
@@ -495,15 +492,37 @@
                 }
                 isModelLoading = true;
                 modelStatus.innerText = '⏳ 正在下载/加载模型（首次需下载约150MB，请耐心等待）...';
+                progressContainer.style.display = 'block';
+                progressFill.style.width = '0%';
+
                 try {
+                    // 确保 transformers 已挂载
+                    if (!self.transformers || !self.transformers.pipeline) {
+                        throw new Error('Transformers.js 未正确加载，请刷新页面重试。');
+                    }
                     const { pipeline: transformersPipeline } = self.transformers;
-                    pipeline = await transformersPipeline('automatic-speech-recognition', 'Xenova/whisper-tiny');
-                    modelStatus.innerText = '✅ 模型已就绪，可上传音频';
+                    
+                    // 使用进度回调
+                    pipeline = await transformersPipeline('automatic-speech-recognition', 'Xenova/whisper-tiny', {
+                        progress_callback: (progress) => {
+                            if (progress.status === 'downloading' && progress.total) {
+                                const percent = (progress.loaded / progress.total) * 100;
+                                progressFill.style.width = percent + '%';
+                                modelStatus.innerText = `⏳ 下载中 ${Math.round(percent)}%`;
+                            } else if (progress.status === 'done') {
+                                progressFill.style.width = '100%';
+                                modelStatus.innerText = '✅ 模型已就绪，可上传音频';
+                                setTimeout(() => { progressContainer.style.display = 'none'; }, 1000);
+                            }
+                        }
+                    });
                     showToast('模型加载完成，现在可以离线识别');
                 } catch (e) {
-                    console.error(e);
-                    modelStatus.innerText = '❌ 模型加载失败，请刷新重试';
-                    showToast('模型加载失败');
+                    console.error('模型加载失败:', e);
+                    modelStatus.innerText = '❌ 模型加载失败：' + e.message;
+                    showToast('模型加载失败: ' + e.message);
+                    progressContainer.style.display = 'none';
+                    pipeline = null;
                 } finally {
                     isModelLoading = false;
                 }
@@ -511,14 +530,20 @@
             }
 
             async function getPipeline() {
-                if (!self.transformers?.pipeline) {
-                    showToast('Transformers.js 加载异常');
-                    return null;
-                }
+                // 如果已经加载过且成功，直接返回
+                if (pipeline) return pipeline;
+                // 否则尝试加载
                 return await loadWhisperPipeline();
             }
 
-            uploadArea.addEventListener('click', () => {
+            // 预加载模型（用户点击上传区域时触发，也可在页面加载后自动开始）
+            uploadArea.addEventListener('click', async () => {
+                // 如果模型未加载，先尝试加载（但不上传文件）
+                if (!pipeline && !isModelLoading) {
+                    showToast('开始加载模型，请稍候...');
+                    loadWhisperPipeline().catch(() => {});
+                }
+                // 仍然打开文件选择
                 fileInput.click();
             });
 
@@ -526,6 +551,7 @@
                 const file = e.target.files[0];
                 if (!file) return;
 
+                // 确保模型已就绪
                 const pipe = await getPipeline();
                 if (!pipe) {
                     showToast('模型未就绪，请稍后重试');
@@ -591,7 +617,6 @@
                         showToast('暂无记录');
                         return;
                     }
-                    // 按时间升序排列，使导出内容有序
                     records.sort((a, b) => a.timestamp - b.timestamp);
                     let content = '';
                     for (const r of records) {
@@ -599,7 +624,6 @@
                         content += `--- ${date} (${r.language}) [${r.source === 'mic' ? '实时' : '上传'}] ---\n`;
                         content += (r.transcript || '无文本') + '\n\n';
                     }
-                    // 添加 BOM 解决乱码
                     const blob = new Blob(['\uFEFF' + content], { type: 'text/plain;charset=utf-8' });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -614,7 +638,7 @@
                 }
             });
 
-            // 初始化
+            // 初始化数据库并渲染历史
             openDB().then(() => {
                 renderHistory();
             }).catch(e => {
@@ -622,12 +646,12 @@
                 showToast('IndexedDB初始化失败，存储将不可用');
             });
 
-            // 预加载模型
+            // 预加载模型（可选，提升用户体验）
             setTimeout(() => {
                 if (self.transformers?.pipeline) {
-                    getPipeline().catch(() => {});
+                    loadWhisperPipeline().catch(() => {});
                 }
-            }, 2000);
+            }, 3000);
         })();
     </script>
 </body>

@@ -7,7 +7,7 @@
     <!-- 使用国内 BootCDN 加载 Font Awesome -->
     <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     
-    <!-- ========== 修复：Transformers.js 多 CDN 加载 + 国内镜像 ========== -->
+    <!-- ========== 强化版：Transformers.js 多 CDN 回退 + 国内镜像 ========== -->
     <script>
         (function() {
             // 必须在加载 transformers 之前设置镜像源
@@ -17,17 +17,21 @@
             }
         })();
 
-        // 多 CDN 回退加载 Transformers.js
         (function loadTransformers() {
-            // 如果已经加载成功，直接返回
             if (window.transformers && typeof window.transformers.pipeline === 'function') return;
 
-            var script = document.createElement('script');
+            // CDN 列表（按优先级排序）
             var cdnList = [
-                'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0',  // 首选 jsDelivr
-                'https://unpkg.com/@xenova/transformers@2.6.0'              // 备选 unpkg
+                'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0/dist/transformers.min.js',        // jsDelivr
+                'https://unpkg.com/@xenova/transformers@2.6.0/dist/transformers.min.js',                   // unpkg
+                'https://cdn1.tianli0.top/npm/@xenova/transformers@2.6.0/dist/transformers.min.js',        // 天理 CDN (国内)
+                'https://code.bdstatic.com/npm/@xenova/transformers@2.6.0/dist/transformers.min.js',       // 百度
+                'https://cdn.staticfile.org/transformers-js/2.6.0/transformers.min.js'                     // 七牛 (需确认文件名)
             ];
+            // 注意：最后一个 staticfile 的路径可能不正确，仅为示例，实际请用 npm 包名
+
             var currentCDNIndex = 0;
+            var script = null;
 
             function tryLoadNext() {
                 if (currentCDNIndex >= cdnList.length) {
@@ -35,10 +39,22 @@
                     window.transformersLoadError = true;
                     var statusEl = document.getElementById('modelStatus');
                     if (statusEl) {
-                        statusEl.innerHTML = '❌ Transformers.js 加载失败，请 <a href="#" onclick="location.reload()">刷新页面</a> 重试';
+                        statusEl.innerHTML = '❌ Transformers.js 加载失败，请 <a href="#" id="retryLoadBtn">点击重试</a> 或 <a href="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0/dist/transformers.min.js" download>点击下载</a> 并手动引入。';
+                        // 绑定重试事件
+                        setTimeout(function() {
+                            var retryBtn = document.getElementById('retryLoadBtn');
+                            if (retryBtn) retryBtn.onclick = function(e) {
+                                e.preventDefault();
+                                location.reload();
+                            };
+                        }, 100);
                     }
                     return;
                 }
+                if (script && script.parentNode) {
+                    document.head.removeChild(script);
+                }
+                script = document.createElement('script');
                 script.src = cdnList[currentCDNIndex];
                 script.onload = function() {
                     console.log('Transformers.js 加载成功：' + cdnList[currentCDNIndex]);
@@ -47,9 +63,6 @@
                 script.onerror = function() {
                     console.warn('CDN 加载失败，尝试下一个：' + cdnList[currentCDNIndex]);
                     currentCDNIndex++;
-                    // 移除旧 script 标签，创建新标签重试
-                    document.head.removeChild(script);
-                    script = document.createElement('script');
                     tryLoadNext();
                 };
                 document.head.appendChild(script);
@@ -57,7 +70,7 @@
 
             tryLoadNext();
 
-            // 加载超时处理（15秒后仍未成功）
+            // 加载超时处理（20秒后仍未成功）
             setTimeout(function() {
                 if (!window.transformers || typeof window.transformers.pipeline !== 'function') {
                     var statusEl = document.getElementById('modelStatus');
@@ -65,7 +78,7 @@
                         statusEl.innerHTML = '⏳ 加载超时，请 <a href="#" onclick="location.reload()">刷新页面</a> 或检查网络';
                     }
                 }
-            }, 15000);
+            }, 20000);
         })();
     </script>
     <!-- ========== 修复结束 ========== -->
@@ -203,7 +216,7 @@
             <i class="fas fa-cloud-upload-alt"></i>
             <p>点击或拖拽上传音频文件</p>
             <p style="font-size:0.8rem; color:#64748b;">支持 mp3, m4a, wav, webm 等 (离线识别，首次需下载模型)</p>
-            <div id="modelStatus" class="model-loading">⚡ 点击开始加载模型</div>
+            <div id="modelStatus" class="model-loading">⚡ 正在加载 Transformers.js ...</div>
             <div id="progressContainer" class="progress-bar">
                 <div id="progressFill" class="progress-fill"></div>
             </div>

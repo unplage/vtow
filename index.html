@@ -4,17 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>语音转写 · 离线版 (Whisper)</title>
-    <!-- 使用国内 BootCDN 加载 Font Awesome (原 cloudflare 可能被屏蔽) -->
+    <!-- 使用国内 BootCDN 加载 Font Awesome -->
     <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     
-    <!-- 在加载 Transformers.js 前设置 HuggingFace 镜像源 (国内加速) -->
+    <!-- 在加载 Transformers.js 前设置 HuggingFace 镜像源 -->
     <script>
         (function() {
             if (typeof self !== 'undefined') {
                 self.env = self.env || {};
-                // 设置镜像站，所有模型下载将通过此域名
-                self.env.remoteHost = 'https://hf-mirror.com/';
-                // 可选：若镜像路径与官方不一致可调整 remotePathPattern，但 hf-mirror 兼容官方路径，无需额外设置
+                self.env.remoteHost = 'https://hf-mirror.com/';  // 国内镜像
             }
         })();
     </script>
@@ -22,6 +20,7 @@
     <script src="https://unpkg.com/@xenova/transformers@2.6.0"></script>
     
     <style>
+        /* 样式保持不变 */
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -212,8 +211,8 @@
             let analyser = null;
             let visualizerInterval = null;
 
-            // Transformers.js
-            let pipeline = null;
+            // Transformers.js 相关变量
+            let transformersPipeline = null; // 保存 pipeline 函数
             let isModelLoading = false;
 
             // IndexedDB
@@ -221,6 +220,11 @@
             const STORE_NAME = 'recordings';
             const DB_VERSION = 1;
             let db = null;
+
+            // 检查 Transformers.js 是否加载成功
+            function isTransformersLoaded() {
+                return window.transformers && typeof window.transformers.pipeline === 'function';
+            }
 
             // ---------- 数据库 ----------
             function openDB() {
@@ -546,15 +550,16 @@
 
             // ---------- Transformers.js Whisper 离线识别（修复版）----------
             async function loadWhisperPipeline() {
-                if (pipeline) return pipeline;
+                if (transformersPipeline) return transformersPipeline;
                 if (isModelLoading) {
                     showToast('模型正在加载中...');
                     return null;
                 }
 
                 // 检查 Transformers.js 是否正确加载
-                if (typeof window.pipeline !== 'function') {
-                    showToast('Transformers.js 未加载，请检查网络');
+                if (!isTransformersLoaded()) {
+                    showToast('Transformers.js 未加载，请检查网络或刷新重试');
+                    console.error('window.transformers 未定义');
                     throw new Error('Transformers.js not loaded');
                 }
 
@@ -572,8 +577,9 @@
                 }, 15000);
 
                 try {
-                    // 使用量化模型减少体积
-                    pipeline = await window.pipeline(
+                    // 使用 window.transformers.pipeline 而不是 window.pipeline
+                    const pipelineFunc = window.transformers.pipeline;
+                    transformersPipeline = await pipelineFunc(
                         'automatic-speech-recognition',
                         'Xenova/whisper-tiny',
                         {
@@ -606,22 +612,22 @@
                     modelStatus.innerText = '❌ 加载失败，请刷新重试';
                     progressFill.style.width = '0%';
                     showToast('模型加载失败: ' + e.message);
-                    pipeline = null;
+                    transformersPipeline = null;
                     throw e;
                 } finally {
                     isModelLoading = false;
                 }
-                return pipeline;
+                return transformersPipeline;
             }
 
             async function getPipeline() {
-                if (pipeline) return pipeline;
+                if (transformersPipeline) return transformersPipeline;
                 return await loadWhisperPipeline();
             }
 
             // 上传区域点击
             uploadArea.addEventListener('click', () => {
-                if (!pipeline && !isModelLoading) {
+                if (!transformersPipeline && !isModelLoading) {
                     // 后台预加载模型
                     loadWhisperPipeline().catch(() => {});
                 }
@@ -767,6 +773,13 @@
                 showToast('数据库初始化失败');
             });
 
+            // 额外检查：如果 Transformers.js 加载失败，在界面上提示
+            setTimeout(() => {
+                if (!isTransformersLoaded()) {
+                    modelStatus.innerText = '❌ Transformers.js 加载失败，请刷新重试';
+                    modelStatus.style.color = '#b91c1c';
+                }
+            }, 2000);
         })();
     </script>
 </body>

@@ -7,17 +7,68 @@
     <!-- 使用国内 BootCDN 加载 Font Awesome -->
     <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     
-    <!-- 在加载 Transformers.js 前设置 HuggingFace 镜像源 -->
+    <!-- ========== 修复：Transformers.js 多 CDN 加载 + 国内镜像 ========== -->
     <script>
         (function() {
+            // 必须在加载 transformers 之前设置镜像源
             if (typeof self !== 'undefined') {
                 self.env = self.env || {};
                 self.env.remoteHost = 'https://hf-mirror.com/';  // 国内镜像
             }
         })();
+
+        // 多 CDN 回退加载 Transformers.js
+        (function loadTransformers() {
+            // 如果已经加载成功，直接返回
+            if (window.transformers && typeof window.transformers.pipeline === 'function') return;
+
+            var script = document.createElement('script');
+            var cdnList = [
+                'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0',  // 首选 jsDelivr
+                'https://unpkg.com/@xenova/transformers@2.6.0'              // 备选 unpkg
+            ];
+            var currentCDNIndex = 0;
+
+            function tryLoadNext() {
+                if (currentCDNIndex >= cdnList.length) {
+                    console.error('所有 CDN 均加载失败');
+                    window.transformersLoadError = true;
+                    var statusEl = document.getElementById('modelStatus');
+                    if (statusEl) {
+                        statusEl.innerHTML = '❌ Transformers.js 加载失败，请 <a href="#" onclick="location.reload()">刷新页面</a> 重试';
+                    }
+                    return;
+                }
+                script.src = cdnList[currentCDNIndex];
+                script.onload = function() {
+                    console.log('Transformers.js 加载成功：' + cdnList[currentCDNIndex]);
+                    window.dispatchEvent(new Event('transformersReady'));
+                };
+                script.onerror = function() {
+                    console.warn('CDN 加载失败，尝试下一个：' + cdnList[currentCDNIndex]);
+                    currentCDNIndex++;
+                    // 移除旧 script 标签，创建新标签重试
+                    document.head.removeChild(script);
+                    script = document.createElement('script');
+                    tryLoadNext();
+                };
+                document.head.appendChild(script);
+            }
+
+            tryLoadNext();
+
+            // 加载超时处理（15秒后仍未成功）
+            setTimeout(function() {
+                if (!window.transformers || typeof window.transformers.pipeline !== 'function') {
+                    var statusEl = document.getElementById('modelStatus');
+                    if (statusEl) {
+                        statusEl.innerHTML = '⏳ 加载超时，请 <a href="#" onclick="location.reload()">刷新页面</a> 或检查网络';
+                    }
+                }
+            }, 15000);
+        })();
     </script>
-    <!-- 使用国内可访问的 CDN 加载 Transformers.js 2.6.0 (unpkg) -->
-    <script src="https://unpkg.com/@xenova/transformers@2.6.0"></script>
+    <!-- ========== 修复结束 ========== -->
     
     <style>
         /* 样式保持不变 */
@@ -568,13 +619,13 @@
                 progressContainer.style.display = 'block';
                 progressFill.style.width = '5%';
 
-                // 超时提示
+                // 超时提示（延长至30秒）
                 const timeoutId = setTimeout(() => {
                     if (isModelLoading) {
-                        modelStatus.innerText = '⚠️ 加载时间较长，请耐心等待...';
+                        modelStatus.innerText = '⚠️ 下载较慢，请耐心等待...';
                         progressFill.style.width = '30%';
                     }
-                }, 15000);
+                }, 30000);
 
                 try {
                     // 使用 window.transformers.pipeline 而不是 window.pipeline
@@ -773,13 +824,12 @@
                 showToast('数据库初始化失败');
             });
 
-            // 额外检查：如果 Transformers.js 加载失败，在界面上提示
-            setTimeout(() => {
-                if (!isTransformersLoaded()) {
-                    modelStatus.innerText = '❌ Transformers.js 加载失败，请刷新重试';
-                    modelStatus.style.color = '#b91c1c';
+            // Transformers.js 加载成功时更新状态
+            window.addEventListener('transformersReady', function() {
+                if (modelStatus) {
+                    modelStatus.innerHTML = '✅ Transformers.js 已加载，可以上传文件';
                 }
-            }, 2000);
+            });
         })();
     </script>
 </body>

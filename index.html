@@ -4,231 +4,66 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
     <title>语音转写 · 离线版 (Whisper)</title>
-    <!-- 使用国内 BootCDN 加载 Font Awesome -->
     <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     
-    <!-- ========== 增强版加载：本地优先 + CDN 回退 + 详细调试 ========== -->
+    <!-- 设置 HuggingFace 镜像源（必须在加载任何模型之前） -->
     <script>
         (function() {
-            // 设置 HuggingFace 镜像源（必须在加载任何模型之前）
             if (typeof self !== 'undefined') {
                 self.env = self.env || {};
-                self.env.remoteHost = 'https://hf-mirror.com/';  // 国内镜像
+                self.env.remoteHost = 'https://hf-mirror.com/';
             }
-
-            // 获取状态显示元素
-            const modelStatus = document.getElementById('modelStatus');
-            function setStatus(msg, isError = false) {
-                if (modelStatus) {
-                    modelStatus.innerHTML = msg;
-                    modelStatus.style.color = isError ? '#b91c1c' : '#2563eb';
-                }
-                console.log('[加载状态]', msg);
-            }
-
-            // 最终失败处理
-            function allFailed(errorMsg) {
-                setStatus(`❌ 所有加载方式均失败：${errorMsg}。请 <a href="#" id="retryLoadBtn" style="color:#2563eb;">点击重试</a> 或手动刷新。`, true);
-                setTimeout(function() {
-                    const btn = document.getElementById('retryLoadBtn');
-                    if (btn) btn.onclick = function(e) { e.preventDefault(); location.reload(); };
-                }, 100);
-                window.transformersLoadError = true;
-            }
-
-            // 尝试加载脚本（返回 Promise）
-            function loadScript(src) {
-                return new Promise(function(resolve, reject) {
-                    const script = document.createElement('script');
-                    script.src = src;
-                    script.onload = resolve;
-                    script.onerror = function() {
-                        reject(new Error(`加载失败: ${src}`));
-                    };
-                    document.head.appendChild(script);
-                });
-            }
-
-            // 检查本地文件是否可访问（通过发送 HEAD 请求）
-            async function checkLocalFile(url) {
-                try {
-                    const response = await fetch(url, { method: 'HEAD', cache: 'no-cache' });
-                    if (response.ok) {
-                        return true;
-                    } else {
-                        console.warn(`本地文件返回状态 ${response.status}: ${url}`);
-                        return false;
-                    }
-                } catch (e) {
-                    console.warn(`无法访问本地文件: ${url}`, e);
-                    return false;
-                }
-            }
-
-            // 加载队列：先检查本地文件是否存在，再尝试加载
-            const localPath = 'js/transformers.min.js';
-            const cdnList = [
-                'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0/dist/transformers.min.js',
-                'https://unpkg.com/@xenova/transformers@2.6.0/dist/transformers.min.js'
-            ];
-
-            async function loadTransformers() {
-                setStatus('⏳ 正在检查本地文件...');
-                
-                // 先检查本地文件是否可访问
-                const localExists = await checkLocalFile(localPath);
-                if (!localExists) {
-                    setStatus('⚠️ 本地文件不存在或无法访问，将尝试 CDN...');
-                    console.warn('本地文件不存在或无法访问，请确认文件放置在正确路径：' + localPath);
-                } else {
-                    setStatus('⏳ 本地文件存在，尝试加载...');
-                    try {
-                        await loadScript(localPath);
-                        console.log('本地加载成功');
-                        setStatus('✅ 本地 Transformers.js 加载成功');
-                        window.dispatchEvent(new Event('transformersReady'));
-                        return;
-                    } catch (e) {
-                        setStatus(`⚠️ 本地加载失败：${e.message}，尝试 CDN...`);
-                        console.error('本地加载异常', e);
-                    }
-                }
-
-                // 尝试 CDN 列表
-                for (let i = 0; i < cdnList.length; i++) {
-                    setStatus(`⏳ 尝试 CDN (${i+1}/${cdnList.length})...`);
-                    try {
-                        await loadScript(cdnList[i]);
-                        console.log('CDN 加载成功：' + cdnList[i]);
-                        setStatus('✅ CDN 加载成功');
-                        window.dispatchEvent(new Event('transformersReady'));
-                        return;
-                    } catch (e) {
-                        console.warn('CDN 加载失败：' + cdnList[i], e);
-                    }
-                }
-
-                allFailed('所有 CDN 均失败');
-            }
-
-            // 启动加载（延迟一小段时间确保 DOM 已存在）
-            setTimeout(loadTransformers, 100);
-
-            // 超时保护（20秒后仍未成功）
-            setTimeout(function() {
-                if (!window.transformers || typeof window.transformers.pipeline !== 'function') {
-                    setStatus('⏳ 加载超时，请检查网络或文件路径', true);
-                }
-            }, 20000);
         })();
     </script>
-    <!-- ========== 加载结束 ========== -->
-
+    <!-- 从本地加载 Transformers.js -->
+    <script src="js/transformers.min.js"></script>
+    
     <style>
-        /* 样式保持不变（为节省篇幅，此处省略，实际使用时保留原有完整样式） */
+        /* 样式与之前完全相同，此处省略以节省篇幅，实际使用时请保留 */
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background: #f5f7fa; min-height: 100vh; display: flex; align-items: center; justify-content: center;
-            padding: 12px; color: #1e293b;
-        }
-        .app-container {
-            width: 100%; max-width: 480px; background: white; border-radius: 32px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.08), 0 6px 12px rgba(0,0,0,0.05);
-            overflow: hidden; backdrop-filter: blur(2px); border: 1px solid rgba(255,255,255,0.3);
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f5f7fa; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 12px; color: #1e293b; }
+        .app-container { width: 100%; max-width: 480px; background: white; border-radius: 32px; box-shadow: 0 20px 40px rgba(0,0,0,0.08), 0 6px 12px rgba(0,0,0,0.05); overflow: hidden; backdrop-filter: blur(2px); border: 1px solid rgba(255,255,255,0.3); }
         .header { padding: 24px 24px 16px 24px; background: white; border-bottom: 1px solid #f0f2f5; }
-        .header h1 {
-            font-size: 1.9rem; font-weight: 600; letter-spacing: -0.02em;
-            background: linear-gradient(145deg, #0f172a, #334155); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            margin-bottom: 6px; display: flex; align-items: center; gap: 8px;
-        }
+        .header h1 { font-size: 1.9rem; font-weight: 600; letter-spacing: -0.02em; background: linear-gradient(145deg, #0f172a, #334155); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
         .header h1 i { background: #eef2ff; padding: 8px; border-radius: 18px; color: #4f46e5; font-size: 1.4rem; -webkit-text-fill-color: #4f46e5; }
-        .lang-selector {
-            display: flex; gap: 10px; margin-top: 12px; background: #f8fafc; padding: 6px; border-radius: 48px; border: 1px solid #e2e8f0;
-        }
-        .lang-option {
-            flex: 1; text-align: center; padding: 10px 6px; font-size: 1rem; font-weight: 500; border-radius: 40px;
-            background: transparent; border: none; color: #64748b; transition: all 0.2s ease; cursor: pointer;
-        }
+        .lang-selector { display: flex; gap: 10px; margin-top: 12px; background: #f8fafc; padding: 6px; border-radius: 48px; border: 1px solid #e2e8f0; }
+        .lang-option { flex: 1; text-align: center; padding: 10px 6px; font-size: 1rem; font-weight: 500; border-radius: 40px; background: transparent; border: none; color: #64748b; transition: all 0.2s ease; cursor: pointer; }
         .lang-option.active { background: #ffffff; color: #0f172a; box-shadow: 0 4px 10px rgba(0,0,0,0.03); font-weight: 600; border: 0.5px solid #d9e2ef; }
-        .live-card {
-            background: #ffffff; margin: 20px 24px; padding: 24px 20px; border-radius: 28px;
-            box-shadow: inset 0 2px 10px rgba(0,0,0,0.02), 0 8px 18px -6px rgba(0,20,40,0.12);
-            border: 1px solid #ffffff80; min-height: 160px; display: flex; flex-direction: column;
-        }
+        .live-card { background: #ffffff; margin: 20px 24px; padding: 24px 20px; border-radius: 28px; box-shadow: inset 0 2px 10px rgba(0,0,0,0.02), 0 8px 18px -6px rgba(0,20,40,0.12); border: 1px solid #ffffff80; min-height: 160px; display: flex; flex-direction: column; }
         .transcript-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
         .transcript-label i { font-size: 0.9rem; }
-        .live-transcript {
-            font-size: 1.3rem; line-height: 1.5; font-weight: 420; color: #0b1e33; word-break: break-word;
-            white-space: pre-wrap; flex: 1; min-height: 80px; max-height: 240px; overflow-y: auto; padding-right: 8px; scrollbar-width: thin;
-        }
-        .status-badge {
-            align-self: flex-end; font-size: 0.75rem; padding: 6px 14px; background: #f1f4f9; border-radius: 40px;
-            color: #475569; margin-top: 12px; display: inline-flex; align-items: center; gap: 6px;
-        }
+        .live-transcript { font-size: 1.3rem; line-height: 1.5; font-weight: 420; color: #0b1e33; word-break: break-word; white-space: pre-wrap; flex: 1; min-height: 80px; max-height: 240px; overflow-y: auto; padding-right: 8px; scrollbar-width: thin; }
+        .status-badge { align-self: flex-end; font-size: 0.75rem; padding: 6px 14px; background: #f1f4f9; border-radius: 40px; color: #475569; margin-top: 12px; display: inline-flex; align-items: center; gap: 6px; }
         .status-badge.recording { background: #fee2e2; color: #b91c1c; }
         .status-badge i { font-size: 0.7rem; }
         .control-panel { display: flex; justify-content: space-around; padding: 8px 24px 24px 24px; gap: 12px; flex-wrap: wrap; }
-        .ctrl-btn {
-            flex: 1; background: #fefefe; border: 1px solid #e9edf2; border-radius: 56px; padding: 16px 0;
-            font-size: 1rem; font-weight: 550; color: #1e293b; box-shadow: 0 4px 8px rgba(0,0,0,0.02);
-            transition: all 0.15s ease; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; backdrop-filter: blur(2px);
-        }
+        .ctrl-btn { flex: 1; background: #fefefe; border: 1px solid #e9edf2; border-radius: 56px; padding: 16px 0; font-size: 1rem; font-weight: 550; color: #1e293b; box-shadow: 0 4px 8px rgba(0,0,0,0.02); transition: all 0.15s ease; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; backdrop-filter: blur(2px); }
         .ctrl-btn:active { background: #f1f5f9; transform: scale(0.97); }
         .ctrl-btn.primary { background: #1e293b; border-color: #1e293b; color: white; box-shadow: 0 10px 18px -8px #1e293b80; }
         .ctrl-btn.primary:active { background: #0f172a; }
         .ctrl-btn:disabled { opacity: 0.4; filter: grayscale(0.5); pointer-events: none; }
-        .upload-area {
-            margin: 0 24px 20px 24px; padding: 16px; border: 2px dashed #cbd5e1; border-radius: 28px;
-            text-align: center; background: #f8fafc; cursor: pointer; transition: 0.2s;
-        }
+        .upload-area { margin: 0 24px 20px 24px; padding: 16px; border: 2px dashed #cbd5e1; border-radius: 28px; text-align: center; background: #f8fafc; cursor: pointer; transition: 0.2s; }
         .upload-area:hover { background: #f1f5f9; }
         .upload-area i { font-size: 2rem; color: #4f46e5; margin-bottom: 8px; }
         .upload-area p { color: #475569; font-weight: 500; }
         #fileInput { display: none; }
         .model-loading { font-size: 0.85rem; color: #2563eb; margin-top: 8px; }
-        .progress-bar {
-            width: 100%; height: 6px; background: #e2e8f0; border-radius: 10px; margin-top: 10px; overflow: hidden; display: none;
-        }
-        .progress-fill {
-            height: 100%; background: #4f46e5; width: 0%; transition: width 0.3s;
-        }
+        .progress-bar { width: 100%; height: 6px; background: #e2e8f0; border-radius: 10px; margin-top: 10px; overflow: hidden; display: none; }
+        .progress-fill { height: 100%; background: #4f46e5; width: 0%; transition: width 0.3s; }
         .history-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px 8px 24px; }
         .history-header h2 { font-size: 1.25rem; font-weight: 590; color: #1e293b; }
-        .history-header button {
-            background: none; border: none; color: #4f46e5; font-size: 0.95rem; font-weight: 500;
-            padding: 8px 12px; border-radius: 30px; background: #f1f4f9; display: flex; align-items: center; gap: 6px; cursor: pointer;
-        }
+        .history-header button { background: none; border: none; color: #4f46e5; font-size: 0.95rem; font-weight: 500; padding: 8px 12px; border-radius: 30px; background: #f1f4f9; display: flex; align-items: center; gap: 6px; cursor: pointer; }
         .history-list { padding: 0 24px 30px 24px; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
-        .history-item {
-            background: #ffffff; border-radius: 22px; padding: 18px 16px; border: 1px solid #edf2f7;
-            box-shadow: 0 6px 12px -8px rgba(0,0,0,0.08); transition: 0.1s; display: flex; flex-direction: column; gap: 12px;
-        }
+        .history-item { background: #ffffff; border-radius: 22px; padding: 18px 16px; border: 1px solid #edf2f7; box-shadow: 0 6px 12px -8px rgba(0,0,0,0.08); transition: 0.1s; display: flex; flex-direction: column; gap: 12px; }
         .history-meta { display: flex; align-items: center; gap: 12px; font-size: 0.75rem; color: #64748b; }
         .history-meta i { width: 16px; }
-        .history-text {
-            font-size: 1rem; font-weight: 450; color: #0f172a; background: #f8fafc; padding: 14px;
-            border-radius: 18px; line-height: 1.4; word-break: break-word; max-height: 100px; overflow-y: auto;
-        }
+        .history-text { font-size: 1rem; font-weight: 450; color: #0f172a; background: #f8fafc; padding: 14px; border-radius: 18px; line-height: 1.4; word-break: break-word; max-height: 100px; overflow-y: auto; }
         .history-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 4px; flex-wrap: wrap; }
-        .history-actions button {
-            background: transparent; border: none; color: #4b5563; font-size: 1.1rem; width: 44px; height: 44px;
-            border-radius: 40px; display: inline-flex; align-items: center; justify-content: center;
-            background: #f1f4f9; cursor: pointer; transition: 0.1s;
-        }
+        .history-actions button { background: transparent; border: none; color: #4b5563; font-size: 1.1rem; width: 44px; height: 44px; border-radius: 40px; display: inline-flex; align-items: center; justify-content: center; background: #f1f4f9; cursor: pointer; transition: 0.1s; }
         .history-actions button:active { background: #e2e8f0; }
-        .toast-message {
-            position: fixed; bottom: 30px; left: 20px; right: 20px; max-width: 400px; margin: 0 auto;
-            background: #1e293b; color: white; padding: 14px 24px; border-radius: 60px; font-size: 0.95rem;
-            text-align: center; box-shadow: 0 20px 30px -10px black; opacity: 0; transition: 0.2s; pointer-events: none; z-index: 1000;
-        }
-        .audio-meter {
-            display: flex; gap: 2px; height: 20px; align-items: flex-end; margin-top: 8px; opacity: 0; transition: opacity 0.3s;
-        }
-        .audio-bar {
-            width: 4px; background: #4f46e5; border-radius: 2px; transition: height 0.1s;
-        }
+        .toast-message { position: fixed; bottom: 30px; left: 20px; right: 20px; max-width: 400px; margin: 0 auto; background: #1e293b; color: white; padding: 14px 24px; border-radius: 60px; font-size: 0.95rem; text-align: center; box-shadow: 0 20px 30px -10px black; opacity: 0; transition: 0.2s; pointer-events: none; z-index: 1000; }
+        .audio-meter { display: flex; gap: 2px; height: 20px; align-items: flex-end; margin-top: 8px; opacity: 0; transition: opacity 0.3s; }
+        .audio-bar { width: 4px; background: #4f46e5; border-radius: 2px; transition: height 0.1s; }
     </style>
 </head>
 <body>
@@ -261,8 +96,6 @@
             <div id="progressContainer" class="progress-bar">
                 <div id="progressFill" class="progress-fill"></div>
             </div>
-            <!-- 添加一个手动测试按钮 -->
-            <button id="testFileBtn" style="margin-top:10px; padding:5px 10px; border-radius:20px; border:1px solid #ccc; background:white;">🔍 测试本地文件</button>
         </div>
         <input type="file" id="fileInput" accept="audio/*">
 
@@ -305,7 +138,6 @@
             const modelStatus = document.getElementById('modelStatus');
             const progressContainer = document.getElementById('progressContainer');
             const progressFill = document.getElementById('progressFill');
-            const testFileBtn = document.getElementById('testFileBtn');
 
             // 状态
             let currentStream = null;
@@ -320,8 +152,9 @@
             let visualizerInterval = null;
 
             // Transformers.js 相关变量
-            let transformersPipeline = null;
+            let transformersPipeline = null; // 保存 pipeline 函数
             let isModelLoading = false;
+            let transformersReady = false;    // 新增：标记是否完全就绪
 
             // IndexedDB
             const DB_NAME = 'VoiceTranscriptDB_v2';
@@ -329,10 +162,48 @@
             const DB_VERSION = 1;
             let db = null;
 
-            // 检查 Transformers.js 是否加载成功
+            // ---------- 增强的 Transformers.js 就绪检测 ----------
             function isTransformersLoaded() {
+                // 必须同时存在且 pipeline 为函数
                 return window.transformers && typeof window.transformers.pipeline === 'function';
             }
+
+            // 等待 pipeline 就绪（最多等待 timeout 毫秒）
+            async function waitForPipeline(timeout = 5000) {
+                if (isTransformersLoaded()) return true;
+                const start = Date.now();
+                while (Date.now() - start < timeout) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    if (isTransformersLoaded()) return true;
+                }
+                return false;
+            }
+
+            // 在脚本加载后轮询检查 pipeline 是否可用，然后触发事件
+            (function checkPipelineReady() {
+                if (isTransformersLoaded()) {
+                    console.log('Transformers.js pipeline 已就绪');
+                    transformersReady = true;
+                    modelStatus.innerHTML = '✅ Transformers.js 已就绪，可以上传文件';
+                    window.dispatchEvent(new Event('transformersReady'));
+                    return;
+                }
+                // 如果脚本已加载但 pipeline 尚未定义，继续轮询（最多5秒）
+                if (window.transformers) {
+                    setTimeout(checkPipelineReady, 100);
+                } else {
+                    // 脚本未加载，等待脚本加载（脚本加载后会自动执行此函数？这里需要确保脚本加载后调用）
+                    // 但脚本加载是异步的，我们已经在外部用 <script> 加载，所以这里只需轮询
+                    setTimeout(checkPipelineReady, 200);
+                }
+            })();
+
+            // 超时保护（10秒后仍未就绪则提示）
+            setTimeout(() => {
+                if (!transformersReady) {
+                    modelStatus.innerHTML = '⚠️ Transformers.js 初始化超时，请刷新重试';
+                }
+            }, 10000);
 
             // ---------- 数据库 ----------
             function openDB() {
@@ -664,9 +535,11 @@
                     return null;
                 }
 
-                if (!isTransformersLoaded()) {
-                    showToast('Transformers.js 未加载，请检查上方状态');
-                    throw new Error('Transformers.js not loaded');
+                // 等待 pipeline 就绪（最多3秒）
+                const ready = await waitForPipeline(3000);
+                if (!ready) {
+                    showToast('Transformers.js 未完全就绪，请稍后重试');
+                    throw new Error('Transformers.js not ready');
                 }
 
                 isModelLoading = true;
@@ -732,6 +605,7 @@
             // 上传区域点击
             uploadArea.addEventListener('click', () => {
                 if (!transformersPipeline && !isModelLoading) {
+                    // 后台预加载模型
                     loadWhisperPipeline().catch(() => {});
                 }
                 fileInput.click();
@@ -860,21 +734,6 @@
                 }
             });
 
-            // 测试本地文件按钮
-            testFileBtn.addEventListener('click', async () => {
-                const localPath = 'js/transformers.min.js';
-                try {
-                    const response = await fetch(localPath, { method: 'HEAD' });
-                    if (response.ok) {
-                        showToast(`✅ 本地文件可访问，状态 ${response.status}`);
-                    } else {
-                        showToast(`❌ 本地文件返回状态 ${response.status}，请检查路径`);
-                    }
-                } catch (e) {
-                    showToast(`❌ 无法访问本地文件：${e.message}`);
-                }
-            });
-
             // 初始化
             openDB().then(() => {
                 renderHistory();
@@ -883,14 +742,10 @@
                 showToast('数据库初始化失败');
             });
 
-            window.addEventListener('transformersReady', function() {
-                if (modelStatus) {
-                    modelStatus.innerHTML = '✅ Transformers.js 已加载，可以上传文件';
-                }
-            });
-
+            // 如果 pipeline 已经就绪，更新状态
             if (isTransformersLoaded()) {
-                modelStatus.innerHTML = '✅ Transformers.js 已加载，可以上传文件';
+                transformersReady = true;
+                modelStatus.innerHTML = '✅ Transformers.js 已就绪，可以上传文件';
             }
         })();
     </script>

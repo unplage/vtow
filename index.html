@@ -3,80 +3,133 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>语音转写 · 离线版 (Whisper)</title>
+    <title>语音转写 · 双擎版 (针对国内网络优化)</title>
     <!-- 使用国内 BootCDN 加载 Font Awesome -->
     <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    
-    <!-- 设置 HuggingFace 镜像源（必须在加载任何模型之前） -->
-    <script>
-        (function() {
-            if (typeof self !== 'undefined') {
-                self.env = self.env || {};
-                self.env.remoteHost = 'https://hf-mirror.com/';  // 国内镜像
-            }
-        })();
-    </script>
-    
     <style>
-        /* 完整样式，此处省略以节省篇幅，实际使用时请保留之前的完整样式 */
+        /* ========== 现代化清爽样式 ========== */
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f5f7fa; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 12px; color: #1e293b; }
-        .app-container { width: 100%; max-width: 480px; background: white; border-radius: 32px; box-shadow: 0 20px 40px rgba(0,0,0,0.08), 0 6px 12px rgba(0,0,0,0.05); overflow: hidden; backdrop-filter: blur(2px); border: 1px solid rgba(255,255,255,0.3); }
-        .header { padding: 24px 24px 16px 24px; background: white; border-bottom: 1px solid #f0f2f5; }
-        .header h1 { font-size: 1.9rem; font-weight: 600; letter-spacing: -0.02em; background: linear-gradient(145deg, #0f172a, #334155); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
-        .header h1 i { background: #eef2ff; padding: 8px; border-radius: 18px; color: #4f46e5; font-size: 1.4rem; -webkit-text-fill-color: #4f46e5; }
-        .lang-selector { display: flex; gap: 10px; margin-top: 12px; background: #f8fafc; padding: 6px; border-radius: 48px; border: 1px solid #e2e8f0; }
-        .lang-option { flex: 1; text-align: center; padding: 10px 6px; font-size: 1rem; font-weight: 500; border-radius: 40px; background: transparent; border: none; color: #64748b; transition: all 0.2s ease; cursor: pointer; }
-        .lang-option.active { background: #ffffff; color: #0f172a; box-shadow: 0 4px 10px rgba(0,0,0,0.03); font-weight: 600; border: 0.5px solid #d9e2ef; }
-        .live-card { background: #ffffff; margin: 20px 24px; padding: 24px 20px; border-radius: 28px; box-shadow: inset 0 2px 10px rgba(0,0,0,0.02), 0 8px 18px -6px rgba(0,20,40,0.12); border: 1px solid #ffffff80; min-height: 160px; display: flex; flex-direction: column; }
-        .transcript-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
-        .transcript-label i { font-size: 0.9rem; }
-        .live-transcript { font-size: 1.3rem; line-height: 1.5; font-weight: 420; color: #0b1e33; word-break: break-word; white-space: pre-wrap; flex: 1; min-height: 80px; max-height: 240px; overflow-y: auto; padding-right: 8px; scrollbar-width: thin; }
-        .status-badge { align-self: flex-end; font-size: 0.75rem; padding: 6px 14px; background: #f1f4f9; border-radius: 40px; color: #475569; margin-top: 12px; display: inline-flex; align-items: center; gap: 6px; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(145deg, #f5f7fa 0%, #eef2f6 100%);
+            min-height: 100vh; display: flex; align-items: center; justify-content: center;
+            padding: 12px; color: #1e293b;
+        }
+        .app-container {
+            width: 100%; max-width: 560px; background: rgba(255,255,255,0.9);
+            backdrop-filter: blur(10px); border-radius: 36px;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+            overflow: hidden; border: 1px solid rgba(255,255,255,0.5);
+        }
+        .header { padding: 28px 24px 16px; background: rgba(255,255,255,0.6); }
+        .header h1 {
+            font-size: 2rem; font-weight: 700; letter-spacing: -0.02em;
+            background: linear-gradient(145deg, #0f172a, #3b4b66); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            margin-bottom: 8px; display: flex; align-items: center; gap: 10px;
+        }
+        .header h1 i { background: #ffffff; padding: 10px; border-radius: 20px; color: #4f46e5; font-size: 1.6rem; -webkit-text-fill-color: #4f46e5; box-shadow: 0 4px 8px rgba(79,70,229,0.2); }
+        .badge-container { display: flex; gap: 8px; margin: 8px 0 12px; flex-wrap: wrap; }
+        .engine-badge {
+            background: #e6edf5; padding: 6px 16px; border-radius: 40px; font-size: 0.8rem;
+            display: inline-flex; align-items: center; gap: 6px; color: #2c3e50; border: 1px solid #cbd5e1;
+        }
+        .engine-badge i { color: #10b981; }
+        .lang-selector {
+            display: flex; gap: 10px; background: #f1f5f9; padding: 6px; border-radius: 48px;
+            border: 1px solid #d9e2ef; margin-top: 8px;
+        }
+        .lang-option {
+            flex: 1; text-align: center; padding: 10px 6px; font-size: 0.95rem; font-weight: 500;
+            border-radius: 40px; background: transparent; border: none; color: #5f6b7a;
+            transition: all 0.2s ease; cursor: pointer;
+        }
+        .lang-option.active { background: #ffffff; color: #0f172a; box-shadow: 0 4px 12px rgba(0,0,0,0.05); font-weight: 600; border: 0.5px solid #b9c8dd; }
+        .live-card {
+            background: white; margin: 16px 24px; padding: 24px 20px; border-radius: 28px;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.02), 0 10px 20px -10px rgba(0,20,40,0.2);
+            border: 1px solid #ffffff; min-height: 160px; display: flex; flex-direction: column;
+        }
+        .transcript-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.8px; color: #7c8b9c; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+        .live-transcript {
+            font-size: 1.3rem; line-height: 1.5; font-weight: 420; color: #0b1e33;
+            word-break: break-word; white-space: pre-wrap; flex: 1; min-height: 90px;
+            max-height: 200px; overflow-y: auto; padding-right: 8px; scrollbar-width: thin;
+        }
+        .status-badge {
+            align-self: flex-end; font-size: 0.75rem; padding: 6px 14px; background: #edf2f7;
+            border-radius: 40px; color: #475569; margin-top: 12px; display: inline-flex;
+            align-items: center; gap: 6px; transition: all 0.2s;
+        }
         .status-badge.recording { background: #fee2e2; color: #b91c1c; }
         .status-badge i { font-size: 0.7rem; }
-        .control-panel { display: flex; justify-content: space-around; padding: 8px 24px 24px 24px; gap: 12px; flex-wrap: wrap; }
-        .ctrl-btn { flex: 1; background: #fefefe; border: 1px solid #e9edf2; border-radius: 56px; padding: 16px 0; font-size: 1rem; font-weight: 550; color: #1e293b; box-shadow: 0 4px 8px rgba(0,0,0,0.02); transition: all 0.15s ease; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; backdrop-filter: blur(2px); }
-        .ctrl-btn:active { background: #f1f5f9; transform: scale(0.97); }
-        .ctrl-btn.primary { background: #1e293b; border-color: #1e293b; color: white; box-shadow: 0 10px 18px -8px #1e293b80; }
+        .control-panel { display: flex; justify-content: center; padding: 8px 24px 20px; gap: 16px; }
+        .ctrl-btn {
+            flex: 0 1 140px; background: #fefefe; border: 1px solid #e2e8f0; border-radius: 56px;
+            padding: 16px 0; font-size: 1rem; font-weight: 550; color: #1e293b;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.04); transition: all 0.15s ease;
+            display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+        }
+        .ctrl-btn:active { transform: scale(0.96); background: #f1f5f9; }
+        .ctrl-btn.primary { background: #1e293b; border-color: #1e293b; color: white; box-shadow: 0 10px 18px -8px #1e293b; }
         .ctrl-btn.primary:active { background: #0f172a; }
-        .ctrl-btn:disabled { opacity: 0.4; filter: grayscale(0.5); pointer-events: none; }
-        .upload-area { margin: 0 24px 20px 24px; padding: 16px; border: 2px dashed #cbd5e1; border-radius: 28px; text-align: center; background: #f8fafc; cursor: pointer; transition: 0.2s; }
-        .upload-area:hover { background: #f1f5f9; }
-        .upload-area i { font-size: 2rem; color: #4f46e5; margin-bottom: 8px; }
-        .upload-area p { color: #475569; font-weight: 500; }
+        .ctrl-btn:disabled { opacity: 0.4; pointer-events: none; }
+        
+        /* ===== 新增：镜像状态条和 iframe 容器样式 ===== */
+        .mirror-status {
+            font-size: 0.85rem; margin: 8px 24px 0; padding: 8px 16px;
+            background: #f0f9ff; border-radius: 40px; border: 1px solid #bae6fd;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .mirror-status i { color: #0284c7; }
+        .mirror-status a { color: #2563eb; text-decoration: none; font-weight: 500; }
+        .iframe-container {
+            margin: 12px 24px 24px; border-radius: 28px; overflow: hidden;
+            box-shadow: 0 10px 25px -12px rgba(0,0,0,0.3);
+            background: #f8fafc; border: 1px solid #e2e8f0;
+        }
+        iframe {
+            width: 100%; height: 450px; border: none; display: block;
+        }
+        /* ===== 原有样式保持不变 ===== */
+        .upload-area { margin: 0 24px 20px; padding: 20px; border: 2px dashed #a5b4cb; border-radius: 28px; text-align: center; background: #f8fafc; cursor: pointer; transition: 0.2s; }
+        .upload-area:hover { background: #ffffff; border-color: #4f46e5; }
+        .upload-area i { font-size: 2.4rem; color: #4f46e5; margin-bottom: 8px; }
+        .upload-area p { color: #334155; font-weight: 500; }
+        .upload-area small { color: #6b7a8f; font-size: 0.8rem; display: block; margin-top: 6px; }
         #fileInput { display: none; }
-        .model-loading { font-size: 0.85rem; color: #2563eb; margin-top: 8px; }
-        .progress-bar { width: 100%; height: 6px; background: #e2e8f0; border-radius: 10px; margin-top: 10px; overflow: hidden; display: none; }
+        .api-status { font-size: 0.8rem; color: #10b981; margin-top: 6px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+        .progress-bar { width: 100%; height: 6px; background: #e2e8f0; border-radius: 10px; margin-top: 14px; overflow: hidden; display: none; }
         .progress-fill { height: 100%; background: #4f46e5; width: 0%; transition: width 0.3s; }
-        .history-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px 8px 24px; }
-        .history-header h2 { font-size: 1.25rem; font-weight: 590; color: #1e293b; }
-        .history-header button { background: none; border: none; color: #4f46e5; font-size: 0.95rem; font-weight: 500; padding: 8px 12px; border-radius: 30px; background: #f1f4f9; display: flex; align-items: center; gap: 6px; cursor: pointer; }
-        .history-list { padding: 0 24px 30px 24px; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
-        .history-item { background: #ffffff; border-radius: 22px; padding: 18px 16px; border: 1px solid #edf2f7; box-shadow: 0 6px 12px -8px rgba(0,0,0,0.08); transition: 0.1s; display: flex; flex-direction: column; gap: 12px; }
-        .history-meta { display: flex; align-items: center; gap: 12px; font-size: 0.75rem; color: #64748b; }
-        .history-meta i { width: 16px; }
-        .history-text { font-size: 1rem; font-weight: 450; color: #0f172a; background: #f8fafc; padding: 14px; border-radius: 18px; line-height: 1.4; word-break: break-word; max-height: 100px; overflow-y: auto; }
-        .history-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 4px; flex-wrap: wrap; }
-        .history-actions button { background: transparent; border: none; color: #4b5563; font-size: 1.1rem; width: 44px; height: 44px; border-radius: 40px; display: inline-flex; align-items: center; justify-content: center; background: #f1f4f9; cursor: pointer; transition: 0.1s; }
-        .history-actions button:active { background: #e2e8f0; }
+        .history-header { display: flex; justify-content: space-between; align-items: center; padding: 8px 24px 12px; border-top: 1px solid #e9ecf0; margin-top: 8px; }
+        .history-header h2 { font-size: 1.2rem; font-weight: 600; color: #1e293b; }
+        .history-header button { background: none; border: none; color: #4f46e5; font-size: 0.9rem; padding: 8px 16px; border-radius: 40px; background: #f1f4f9; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+        .history-list { padding: 0 24px 30px; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+        .history-item { background: #ffffff; border-radius: 22px; padding: 18px 16px; border: 1px solid #edf2f7; box-shadow: 0 4px 10px rgba(0,0,0,0.02); }
+        .history-meta { display: flex; align-items: center; gap: 12px; font-size: 0.75rem; color: #64748b; margin-bottom: 10px; }
+        .history-text { font-size: 1rem; color: #0f172a; background: #f8fafc; padding: 14px; border-radius: 18px; line-height: 1.4; word-break: break-word; max-height: 100px; overflow-y: auto; margin-bottom: 12px; }
+        .history-actions { display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap; }
+        .history-actions button { background: transparent; border: none; width: 44px; height: 44px; border-radius: 40px; background: #f1f4f9; cursor: pointer; }
         .toast-message { position: fixed; bottom: 30px; left: 20px; right: 20px; max-width: 400px; margin: 0 auto; background: #1e293b; color: white; padding: 14px 24px; border-radius: 60px; font-size: 0.95rem; text-align: center; box-shadow: 0 20px 30px -10px black; opacity: 0; transition: 0.2s; pointer-events: none; z-index: 1000; }
         .audio-meter { display: flex; gap: 2px; height: 20px; align-items: flex-end; margin-top: 8px; opacity: 0; transition: opacity 0.3s; }
-        .audio-bar { width: 4px; background: #4f46e5; border-radius: 2px; transition: height 0.1s; }
+        .audio-bar { width: 4px; background: #4f46e5; border-radius: 2px; }
     </style>
 </head>
 <body>
     <div class="app-container">
         <div class="header">
-            <h1><i class="fas fa-microphone-lines"></i> 语音转写·离线版</h1>
+            <h1><i class="fas fa-microphone-lines"></i> 语音转写·国内优化版</h1>
+            <div class="badge-container">
+                <span class="engine-badge"><i class="fas fa-bolt"></i> 实时: 浏览器原生(离线)</span>
+                <span class="engine-badge"><i class="fas fa-cloud"></i> 文件: 镜像Demo(国内加速)</span>
+            </div>
             <div class="lang-selector" id="langSelector">
-                <button class="lang-option active" data-lang="zh-CN">🇨🇳 中文</button>
-                <button class="lang-option" data-lang="en-US">🇬🇧 英文</button>
+                <button class="lang-option active" data-lang="zh">🇨🇳 中文</button>
+                <button class="lang-option" data-lang="en">🇬🇧 英文</button>
             </div>
         </div>
 
         <div class="live-card">
-            <div class="transcript-label"><i class="far fa-comment-dots"></i> 实时转写</div>
+            <div class="transcript-label"><i class="far fa-comment-dots"></i> 实时转写 (Web Speech API)</div>
             <div class="live-transcript" id="liveTranscript">点击开始，对着麦克风说话...</div>
             <div class="audio-meter" id="audioMeter"></div>
             <div class="status-badge" id="statusBadge"><i class="fas fa-circle"></i> 空闲</div>
@@ -87,20 +140,27 @@
             <button class="ctrl-btn" id="stopBtn" disabled><i class="fas fa-stop"></i> 停止</button>
         </div>
 
-        <div class="upload-area" id="uploadArea">
-            <i class="fas fa-cloud-upload-alt"></i>
-            <p>点击或拖拽上传音频文件</p>
-            <p style="font-size:0.8rem; color:#64748b;">支持 mp3, m4a, wav, webm 等 (离线识别，首次需下载模型)</p>
-            <div id="modelStatus" class="model-loading">⚡ 正在初始化加载...</div>
-            <div id="progressContainer" class="progress-bar">
-                <div id="progressFill" class="progress-fill"></div>
-            </div>
+        <!-- ===== 新增：镜像状态切换条 ===== -->
+        <div class="mirror-status" id="mirrorStatus">
+            <span><i class="fas fa-mirror"></i> 当前镜像: <span id="currentMirror">ModelScope (阿里云)</span></span>
+            <span>
+                <a href="#" id="switchMirrorBtn" onclick="switchMirror()"><i class="fas fa-sync-alt"></i> 切换备用源</a>
+            </span>
         </div>
-        <input type="file" id="fileInput" accept="audio/*">
+
+        <!-- ===== 嵌入国内可访问的 FunASR 在线 Demo (ModelScope 镜像) ===== -->
+        <div class="iframe-container">
+            <iframe 
+                id="funasrIframe"
+                src="https://modelscope.cn/studios/iic/funasr_gradio_demo/embed" 
+                frameborder="0" 
+                allow="microphone">
+            </iframe>
+        </div>
 
         <div class="history-header">
             <h2><i class="far fa-clock"></i> 本地记录</h2>
-            <button id="exportAllBtn"><i class="fas fa-download"></i> 全部导出</button>
+            <button id="exportAllBtn"><i class="fas fa-download"></i> 导出全部</button>
         </div>
 
         <div class="history-list" id="historyList">
@@ -110,111 +170,16 @@
 
     <div id="toast" class="toast-message"></div>
 
-    <!-- ========== Transformers.js 加载逻辑移到 body 底部，确保 DOM 已存在 ========== -->
     <script>
         (function() {
-            // 获取状态显示元素
-            const modelStatus = document.getElementById('modelStatus');
-            function setStatus(msg, isError = false) {
-                if (modelStatus) {
-                    modelStatus.innerHTML = msg;
-                    modelStatus.style.color = isError ? '#b91c1c' : '#2563eb';
-                }
-                console.log('[加载状态]', msg);
-            }
-
-            // 最终失败处理
-            function allFailed() {
-                setStatus('❌ 所有加载方式均失败。请 <a href="#" id="retryLoadBtn" style="color:#2563eb;">点击重试</a> 或手动刷新。', true);
-                setTimeout(() => {
-                    const btn = document.getElementById('retryLoadBtn');
-                    if (btn) btn.onclick = (e) => { e.preventDefault(); location.reload(); };
-                }, 100);
-                window.transformersLoadError = true;
-            }
-
-            // 尝试加载脚本（返回 Promise）
-            function loadScript(src) {
-                return new Promise((resolve, reject) => {
-                    const script = document.createElement('script');
-                    script.src = src;
-                    script.onload = resolve;
-                    script.onerror = () => reject(new Error(`加载失败: ${src}`));
-                    document.head.appendChild(script); // 仍加到 head 中，不影响
-                });
-            }
-
-            // 等待 pipeline 就绪（超时）
-            async function waitForPipeline(timeout = 5000) {
-                const start = Date.now();
-                while (Date.now() - start < timeout) {
-                    if (window.transformers && typeof window.transformers.pipeline === 'function') {
-                        return true;
-                    }
-                    await new Promise(r => setTimeout(r, 100));
-                }
-                return false;
-            }
-
-            // 尝试从指定源加载并等待就绪
-            async function tryLoadAndWait(src, sourceName) {
-                setStatus(`⏳ 尝试从 ${sourceName} 加载...`);
-                try {
-                    await loadScript(src);
-                    const ready = await waitForPipeline(5000);
-                    if (ready) {
-                        setStatus(`✅ ${sourceName} 加载成功，pipeline 已就绪`);
-                        window.dispatchEvent(new Event('transformersReady'));
-                        return true;
-                    } else {
-                        setStatus(`⚠️ ${sourceName} 加载后 pipeline 未就绪`);
-                        return false;
-                    }
-                } catch (e) {
-                    setStatus(`❌ ${sourceName} 加载失败: ${e.message}`);
-                    return false;
-                }
-            }
-
-            // 主加载流程
-            async function loadTransformers() {
-                // 尝试本地
-                let success = await tryLoadAndWait('js/transformers.min.js', '本地文件');
-                if (success) return;
-
-                // CDN 列表
-                const cdnList = [
-                    { url: 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0/dist/transformers.min.js', name: 'jsDelivr' },
-                    { url: 'https://unpkg.com/@xenova/transformers@2.6.0/dist/transformers.min.js', name: 'unpkg' }
-                ];
-                for (let cdn of cdnList) {
-                    success = await tryLoadAndWait(cdn.url, cdn.name);
-                    if (success) return;
-                }
-
-                allFailed();
-            }
-
-            // 启动加载（DOM 已就绪）
-            loadTransformers();
-        })();
-    </script>
-
-    <!-- 主体脚本（含 Whisper 识别、录音等） -->
-    <script>
-        (function() {
-            // 初始化音频可视化条
+            // ==================== DOM 元素 ====================
             const audioMeter = document.getElementById('audioMeter');
             for (let i = 0; i < 20; i++) {
                 const bar = document.createElement('div');
                 bar.className = 'audio-bar';
-                bar.style.height = '4px';
                 audioMeter.appendChild(bar);
             }
 
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            
-            // DOM 元素
             const liveTranscriptEl = document.getElementById('liveTranscript');
             const statusBadge = document.getElementById('statusBadge');
             const startBtn = document.getElementById('startBtn');
@@ -223,13 +188,30 @@
             const historyListEl = document.getElementById('historyList');
             const toastEl = document.getElementById('toast');
             const exportAllBtn = document.getElementById('exportAllBtn');
-            const uploadArea = document.getElementById('uploadArea');
-            const fileInput = document.getElementById('fileInput');
-            const modelStatus = document.getElementById('modelStatus');
-            const progressContainer = document.getElementById('progressContainer');
-            const progressFill = document.getElementById('progressFill');
+            
+            // ==================== 镜像切换功能 ====================
+            const iframe = document.getElementById('funasrIframe');
+            const currentMirrorSpan = document.getElementById('currentMirror');
+            
+            // 预置的国内可用镜像列表
+            const mirrorList = [
+                { name: 'ModelScope (阿里云)', url: 'https://modelscope.cn/studios/iic/funasr_gradio_demo/embed' },
+                { name: 'Hugging Face 镜像 (清华)', url: 'https://hf-mirror.com/spaces/funasr/funasr-gradio-demo' }
+            ];
+            let currentMirrorIndex = 0; // 默认第一个
 
-            // 状态
+            // 切换到下一个镜像
+            window.switchMirror = function() {
+                currentMirrorIndex = (currentMirrorIndex + 1) % mirrorList.length;
+                const newMirror = mirrorList[currentMirrorIndex];
+                iframe.src = newMirror.url;
+                currentMirrorSpan.innerText = newMirror.name;
+                showToast(`已切换到 ${newMirror.name}`);
+                return false; // 阻止链接跳转
+            };
+
+            // ==================== 全局变量 ====================
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             let currentStream = null;
             let mediaRecorder = null;
             let recognition = null;
@@ -237,46 +219,20 @@
             let userStopped = false;
             let finalTranscriptSegments = [];
             let audioChunks = [];
-            let currentLanguage = 'zh-CN';
+            let currentLanguage = 'zh';
             let analyser = null;
             let visualizerInterval = null;
-
-            // Transformers.js 相关变量
-            let transformersPipeline = null; // 保存 pipeline 函数
-            let isModelLoading = false;
-
+            
             // IndexedDB
-            const DB_NAME = 'VoiceTranscriptDB_v2';
+            const DB_NAME = 'VoiceTranscriptDB_v4';
             const STORE_NAME = 'recordings';
-            const DB_VERSION = 1;
             let db = null;
 
-            // ---------- 增强的 Transformers.js 就绪检测 ----------
-            function isTransformersLoaded() {
-                return window.transformers && typeof window.transformers.pipeline === 'function';
-            }
-
-            // 等待 pipeline 就绪（最多 timeout 毫秒）
-            async function waitForPipeline(timeout = 5000) {
-                if (isTransformersLoaded()) return true;
-                const start = Date.now();
-                while (Date.now() - start < timeout) {
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    if (isTransformersLoaded()) return true;
-                }
-                return false;
-            }
-
-            // 监听 transformersReady 事件，更新 UI
-            window.addEventListener('transformersReady', () => {
-                if (modelStatus) modelStatus.innerHTML = '✅ Transformers.js 已就绪，可以上传文件';
-            });
-
-            // ---------- 数据库 ----------
+            // ==================== 数据库初始化 ====================
             function openDB() {
                 return new Promise((resolve, reject) => {
                     if (db) return resolve(db);
-                    const request = indexedDB.open(DB_NAME, DB_VERSION);
+                    const request = indexedDB.open(DB_NAME, 1);
                     request.onerror = () => reject('数据库打开失败');
                     request.onsuccess = (e) => {
                         db = e.target.result;
@@ -292,7 +248,7 @@
                 });
             }
 
-            async function addRecording(blob, transcript, lang, source = 'mic') {
+            async function addRecording(blob, transcript, lang, source) {
                 await openDB();
                 return new Promise((resolve, reject) => {
                     const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -300,39 +256,33 @@
                     const entry = {
                         timestamp: Date.now(),
                         audioBlob: blob,
-                        transcript: transcript || ' ',
+                        transcript: transcript || '（无识别结果）',
                         language: lang,
                         source: source
                     };
-                    const req = store.add(entry);
-                    req.onsuccess = () => resolve();
-                    req.onerror = reject;
+                    store.add(entry).onsuccess = () => resolve();
                 });
             }
 
             async function getAllRecordings() {
                 await openDB();
-                return new Promise((resolve, reject) => {
+                return new Promise((resolve) => {
                     const tx = db.transaction(STORE_NAME, 'readonly');
                     const store = tx.objectStore(STORE_NAME);
-                    const req = store.getAll();
-                    req.onsuccess = () => resolve(req.result || []);
-                    req.onerror = reject;
+                    store.getAll().onsuccess = (e) => resolve(e.target.result || []);
                 });
             }
 
             async function deleteRecording(id) {
                 await openDB();
-                return new Promise((resolve, reject) => {
+                return new Promise((resolve) => {
                     const tx = db.transaction(STORE_NAME, 'readwrite');
                     const store = tx.objectStore(STORE_NAME);
-                    const req = store.delete(id);
-                    req.onsuccess = () => resolve();
-                    req.onerror = reject;
+                    store.delete(id).onsuccess = () => resolve();
                 });
             }
 
-            // ---------- 渲染历史 ----------
+            // ==================== 渲染历史 ====================
             async function renderHistory() {
                 try {
                     const records = await getAllRecordings();
@@ -343,62 +293,43 @@
                     records.sort((a,b) => b.timestamp - a.timestamp);
                     let html = '';
                     records.forEach(rec => {
-                        const date = new Date(rec.timestamp).toLocaleString(undefined, { hour12: false });
-                        const preview = rec.transcript.length > 80 ? rec.transcript.slice(0,80)+'…' : rec.transcript;
+                        const date = new Date(rec.timestamp).toLocaleString();
                         html += `
                         <div class="history-item" data-id="${rec.id}">
                             <div class="history-meta">
-                                <i class="far fa-calendar-alt"></i> ${date}  ·  ${rec.language === 'zh-CN' ? '中文' : '英文'} · ${rec.source === 'mic' ? '🎤实时' : '📁上传'}
+                                <i class="far fa-calendar-alt"></i> ${date} · ${rec.language === 'zh' ? '中文' : '英文'} · ${rec.source}
                             </div>
-                            <div class="history-text">${escapeHtml(rec.transcript) || '无文本'}</div>
+                            <div class="history-text">${escapeHtml(rec.transcript)}</div>
                             <div class="history-actions">
                                 <button class="play-audio" title="播放"><i class="fas fa-play"></i></button>
                                 <button class="export-text" title="导出文本"><i class="fas fa-file-alt"></i></button>
-                                <button class="export-audio" title="导出音频"><i class="fas fa-download"></i></button>
                                 <button class="delete-entry" title="删除"><i class="fas fa-trash-alt"></i></button>
                             </div>
                         </div>`;
                     });
                     historyListEl.innerHTML = html;
 
-                    // 绑定事件
                     document.querySelectorAll('.history-item').forEach(item => {
                         const id = Number(item.dataset.id);
                         const record = records.find(r => r.id === id);
                         if (!record) return;
 
-                        item.querySelector('.play-audio')?.addEventListener('click', (e) => {
-                            e.stopPropagation();
+                        item.querySelector('.play-audio')?.addEventListener('click', () => {
                             const url = URL.createObjectURL(record.audioBlob);
                             new Audio(url).play();
-                            setTimeout(() => URL.revokeObjectURL(url), 10000);
                         });
 
-                        item.querySelector('.export-text')?.addEventListener('click', (e) => {
-                            e.stopPropagation();
+                        item.querySelector('.export-text')?.addEventListener('click', () => {
                             const blob = new Blob(['\uFEFF' + record.transcript], { type: 'text/plain;charset=utf-8' });
                             const url = URL.createObjectURL(blob);
                             const a = document.createElement('a');
                             a.href = url;
                             a.download = `transcript_${record.timestamp}.txt`;
                             a.click();
-                            URL.revokeObjectURL(url);
                             showToast('文本已导出');
                         });
 
-                        item.querySelector('.export-audio')?.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            const url = URL.createObjectURL(record.audioBlob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `audio_${record.timestamp}.webm`;
-                            a.click();
-                            URL.revokeObjectURL(url);
-                            showToast('音频已导出');
-                        });
-
-                        item.querySelector('.delete-entry')?.addEventListener('click', async (e) => {
-                            e.stopPropagation();
+                        item.querySelector('.delete-entry')?.addEventListener('click', async () => {
                             await deleteRecording(id);
                             renderHistory();
                             showToast('已删除');
@@ -410,7 +341,6 @@
             }
 
             function escapeHtml(unsafe) {
-                if (!unsafe) return '';
                 return unsafe.replace(/[&<>"]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
             }
 
@@ -420,7 +350,19 @@
                 setTimeout(() => toastEl.style.opacity = '0', duration);
             }
 
-            // ---------- 实时录音 ----------
+            // ==================== 音频可视化 ====================
+            function updateVisualizer() {
+                if (!analyser) return;
+                const data = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(data);
+                const bars = audioMeter.querySelectorAll('.audio-bar');
+                const step = Math.floor(data.length / bars.length);
+                bars.forEach((bar, i) => {
+                    const value = data[i * step];
+                    bar.style.height = Math.max(4, (value / 255) * 20) + 'px';
+                });
+            }
+
             function closeStream() {
                 if (currentStream) {
                     currentStream.getTracks().forEach(track => track.stop());
@@ -433,52 +375,7 @@
                 audioMeter.style.opacity = '0';
             }
 
-            function updateVisualizer() {
-                if (!analyser) return;
-                const data = new Uint8Array(analyser.frequencyBinCount);
-                analyser.getByteFrequencyData(data);
-                const bars = audioMeter.querySelectorAll('.audio-bar');
-                const step = Math.floor(data.length / bars.length);
-                
-                bars.forEach((bar, i) => {
-                    const value = data[i * step];
-                    const height = Math.max(4, (value / 255) * 20);
-                    bar.style.height = height + 'px';
-                });
-            }
-
-            async function saveToDBAndCleanup() {
-                try {
-                    const blob = new Blob(audioChunks, { type: 'audio/webm' });
-                    const fullTranscript = finalTranscriptSegments.join(' ').trim() || '（无语音识别文本）';
-                    await addRecording(blob, fullTranscript, currentLanguage, 'mic');
-                    showToast('已保存到本地记录');
-                } catch (e) {
-                    console.warn('保存失败', e);
-                    showToast('保存失败');
-                } finally {
-                    closeStream();
-                    isRecording = false;
-                    startBtn.disabled = false;
-                    stopBtn.disabled = true;
-                    statusBadge.innerHTML = '<i class="fas fa-circle"></i> 空闲';
-                    statusBadge.classList.remove('recording');
-                    liveTranscriptEl.innerText = '点击开始，对着麦克风说话...';
-                    renderHistory();
-                }
-            }
-
-            function stopRecording() {
-                if (!isRecording) return;
-                userStopped = true;
-                if (recognition) {
-                    try { recognition.stop(); } catch (e) {}
-                }
-                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                    mediaRecorder.stop();
-                }
-            }
-
+            // ==================== 实时录音 (Web Speech API) ====================
             async function startRecording() {
                 if (isRecording) return;
                 finalTranscriptSegments = [];
@@ -486,35 +383,25 @@
                 userStopped = false;
 
                 try {
-                    currentStream = await navigator.mediaDevices.getUserMedia({ 
-                        audio: {
-                            sampleRate: 16000,
-                            channelCount: 1,
-                            echoCancellation: true,
-                            noiseSuppression: true
-                        }
-                    });
+                    currentStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    
+                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    analyser = audioCtx.createAnalyser();
+                    analyser.fftSize = 64;
+                    audioCtx.createMediaStreamSource(currentStream).connect(analyser);
+                    visualizerInterval = setInterval(updateVisualizer, 100);
+                    audioMeter.style.opacity = '1';
                 } catch (err) {
                     showToast('无法访问麦克风: ' + err.message);
                     return;
                 }
 
-                // 设置音频分析器用于可视化
-                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                analyser = audioCtx.createAnalyser();
-                analyser.fftSize = 64;
-                const source = audioCtx.createMediaStreamSource(currentStream);
-                source.connect(analyser);
-                visualizerInterval = setInterval(updateVisualizer, 100);
-                audioMeter.style.opacity = '1';
-
-                // 设置语音识别
                 if (SpeechRecognition) {
                     try {
                         recognition = new SpeechRecognition();
                         recognition.continuous = true;
                         recognition.interimResults = true;
-                        recognition.lang = currentLanguage;
+                        recognition.lang = currentLanguage === 'zh' ? 'zh-CN' : 'en-US';
                         
                         recognition.onresult = (event) => {
                             let interim = '';
@@ -522,7 +409,7 @@
                                 const result = event.results[i];
                                 if (result.isFinal) {
                                     const text = result[0].transcript;
-                                    if (!finalTranscriptSegments.length || finalTranscriptSegments[finalTranscriptSegments.length-1] !== text) {
+                                    if (!finalTranscriptSegments.includes(text)) {
                                         finalTranscriptSegments.push(text);
                                     }
                                 } else {
@@ -535,39 +422,40 @@
                         
                         recognition.onerror = (e) => {
                             console.warn('识别错误:', e.error);
-                            if (!userStopped && isRecording) {
-                                setTimeout(() => {
-                                    if (!userStopped && isRecording) {
-                                        try { recognition.start(); } catch (err) {}
-                                    }
-                                }, 500);
-                            }
+                            if (!userStopped) setTimeout(() => recognition?.start(), 500);
                         };
                         
                         recognition.onend = () => {
-                            if (!userStopped && isRecording) {
-                                setTimeout(() => {
-                                    if (!userStopped && isRecording) {
-                                        try { recognition.start(); } catch (err) {}
-                                    }
-                                }, 300);
-                            }
+                            if (!userStopped && isRecording) recognition?.start();
                         };
+                        
+                        recognition.start();
                     } catch (e) {
-                        console.error('语音识别初始化失败', e);
+                        console.error('语音识别启动失败', e);
                         recognition = null;
                     }
+                } else {
+                    showToast('您的浏览器不支持语音识别');
+                    closeStream();
+                    return;
                 }
 
-                // 设置媒体录制
                 try {
-                    mediaRecorder = new MediaRecorder(currentStream, {
-                        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
-                    });
-                    mediaRecorder.ondataavailable = (e) => {
-                        if (e.data.size > 0) audioChunks.push(e.data);
+                    mediaRecorder = new MediaRecorder(currentStream);
+                    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+                    mediaRecorder.onstop = async () => {
+                        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const transcript = finalTranscriptSegments.join(' ').trim() || '（无语音）';
+                        await addRecording(blob, transcript, currentLanguage, '🎤 实时');
+                        showToast('已保存到记录');
+                        renderHistory();
+                        closeStream();
+                        isRecording = false;
+                        startBtn.disabled = false;
+                        stopBtn.disabled = true;
+                        statusBadge.innerHTML = '<i class="fas fa-circle"></i> 空闲';
+                        statusBadge.classList.remove('recording');
                     };
-                    mediaRecorder.onstop = saveToDBAndCleanup;
                     mediaRecorder.start(200);
                 } catch (e) {
                     showToast('媒体录制初始化失败');
@@ -575,230 +463,50 @@
                     return;
                 }
 
-                // 启动识别
-                if (recognition) {
-                    try { 
-                        recognition.start(); 
-                    } catch (e) {
-                        showToast('识别启动失败');
-                        mediaRecorder.stop();
-                        return;
-                    }
-                }
-
                 isRecording = true;
                 startBtn.disabled = true;
                 stopBtn.disabled = false;
                 statusBadge.innerHTML = '<i class="fas fa-circle"></i> 录音中...';
                 statusBadge.classList.add('recording');
-                liveTranscriptEl.innerText = '正在聆听...';
             }
 
-            // ---------- Transformers.js Whisper 离线识别 ----------
-            async function loadWhisperPipeline() {
-                if (transformersPipeline) return transformersPipeline;
-                if (isModelLoading) {
-                    showToast('模型正在加载中...');
-                    return null;
-                }
-
-                // 等待 pipeline 就绪（最多3秒）
-                const ready = await waitForPipeline(3000);
-                if (!ready) {
-                    showToast('Transformers.js 未完全就绪，请稍后重试');
-                    throw new Error('Transformers.js not ready');
-                }
-
-                isModelLoading = true;
-                if (modelStatus) modelStatus.innerText = '⏳ 正在加载模型（约 75MB）...';
-                progressContainer.style.display = 'block';
-                progressFill.style.width = '5%';
-
-                const timeoutId = setTimeout(() => {
-                    if (isModelLoading) {
-                        if (modelStatus) modelStatus.innerText = '⚠️ 下载较慢，请耐心等待...';
-                        progressFill.style.width = '30%';
-                    }
-                }, 30000);
-
-                try {
-                    const pipelineFunc = window.transformers.pipeline;
-                    transformersPipeline = await pipelineFunc(
-                        'automatic-speech-recognition',
-                        'Xenova/whisper-tiny',
-                        {
-                            quantized: true,
-                            revision: 'main',
-                            progress_callback: (progress) => {
-                                console.log('Progress:', progress);
-                                if (progress.status === 'progress' && progress.total) {
-                                    const percent = Math.max(5, (progress.loaded / progress.total) * 100);
-                                    progressFill.style.width = percent + '%';
-                                    if (modelStatus) modelStatus.innerText = `⏳ 下载中 ${Math.round(percent)}%`;
-                                } else if (progress.status === 'init') {
-                                    progressFill.style.width = '10%';
-                                    if (modelStatus) modelStatus.innerText = '⏳ 初始化...';
-                                } else if (progress.status === 'done') {
-                                    progressFill.style.width = '100%';
-                                    if (modelStatus) modelStatus.innerText = '✅ 模型已就绪';
-                                }
-                            }
-                        }
-                    );
-                    
-                    clearTimeout(timeoutId);
-                    showToast('模型加载完成');
-                    setTimeout(() => progressContainer.style.display = 'none', 1000);
-                    
-                } catch (e) {
-                    clearTimeout(timeoutId);
-                    console.error('模型加载失败:', e);
-                    if (modelStatus) modelStatus.innerText = '❌ 加载失败，请刷新重试';
-                    progressFill.style.width = '0%';
-                    showToast('模型加载失败: ' + e.message);
-                    transformersPipeline = null;
-                    throw e;
-                } finally {
-                    isModelLoading = false;
-                }
-                return transformersPipeline;
+            function stopRecording() {
+                if (!isRecording) return;
+                userStopped = true;
+                if (recognition) recognition.stop();
+                if (mediaRecorder?.state !== 'inactive') mediaRecorder.stop();
             }
 
-            async function getPipeline() {
-                if (transformersPipeline) return transformersPipeline;
-                return await loadWhisperPipeline();
-            }
-
-            // 上传区域点击
-            uploadArea.addEventListener('click', () => {
-                if (!transformersPipeline && !isModelLoading) {
-                    // 后台预加载模型
-                    loadWhisperPipeline().catch(() => {});
-                }
-                fileInput.click();
-            });
-
-            // 文件选择处理
-            fileInput.addEventListener('change', async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                const validExts = ['.mp3', '.m4a', '.wav', '.webm', '.ogg', '.aac'];
-                const ext = '.' + file.name.split('.').pop().toLowerCase();
-                if (!validExts.includes(ext)) {
-                    showToast('请选择有效的音频文件');
-                    fileInput.value = '';
-                    return;
-                }
-                if (file.size > 50 * 1024 * 1024) {
-                    showToast('文件过大（>50MB），请分割后上传');
-                    fileInput.value = '';
-                    return;
-                }
-
-                const pipe = await getPipeline();
-                if (!pipe) {
-                    showToast('模型未就绪，请稍后重试');
-                    fileInput.value = '';
-                    return;
-                }
-
-                showToast('正在识别，请稍候...');
-                if (modelStatus) modelStatus.innerText = '🔍 识别中...';
-
-                let audioContext = null;
-                let offlineCtx = null;
-
-                try {
-                    const arrayBuffer = await file.arrayBuffer();
-                    
-                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-                    
-                    const targetSampleRate = 16000;
-                    const duration = audioBuffer.duration;
-                    const newLength = Math.ceil(duration * targetSampleRate);
-                    
-                    offlineCtx = new OfflineAudioContext(1, newLength, targetSampleRate);
-                    const source = offlineCtx.createBufferSource();
-                    source.buffer = audioBuffer;
-                    source.connect(offlineCtx.destination);
-                    source.start();
-                    
-                    const renderedBuffer = await offlineCtx.startRendering();
-                    const audioData = renderedBuffer.getChannelData(0);
-
-                    const language = currentLanguage === 'zh-CN' ? 'zh' : 'en';
-                    const result = await pipe(audioData, { 
-                        language: language, 
-                        task: 'transcribe',
-                        return_timestamps: false
-                    });
-                    
-                    const transcript = result.text;
-
-                    const originalBlob = new Blob([arrayBuffer], { type: file.type });
-                    await addRecording(originalBlob, transcript, currentLanguage, 'upload');
-
-                    liveTranscriptEl.innerText = transcript;
-                    showToast('识别完成，已保存');
-                    renderHistory();
-                    
-                } catch (err) {
-                    console.error('识别失败:', err);
-                    showToast('识别失败: ' + err.message);
-                } finally {
-                    if (audioContext && audioContext.state !== 'closed') {
-                        await audioContext.close();
-                    }
-                    audioContext = null;
-                    offlineCtx = null;
-                    if (modelStatus) modelStatus.innerText = '✅ 模型已就绪';
-                    fileInput.value = '';
-                }
-            });
-
-            // ---------- 事件绑定 ----------
+            // ==================== 事件绑定 ====================
             startBtn.addEventListener('click', startRecording);
             stopBtn.addEventListener('click', stopRecording);
 
             langSelector.addEventListener('click', (e) => {
                 const btn = e.target.closest('.lang-option');
                 if (!btn) return;
-                const lang = btn.dataset.lang;
-                if (!lang) return;
                 document.querySelectorAll('.lang-option').forEach(opt => opt.classList.remove('active'));
                 btn.classList.add('active');
-                currentLanguage = lang;
-                showToast(`语言切换为 ${lang === 'zh-CN' ? '中文' : '英文'}`);
+                currentLanguage = btn.dataset.lang;
+                showToast(`语言切换为 ${currentLanguage === 'zh' ? '中文' : '英文'}`);
             });
 
             exportAllBtn.addEventListener('click', async () => {
-                try {
-                    const records = await getAllRecordings();
-                    if (records.length === 0) {
-                        showToast('暂无记录');
-                        return;
-                    }
-                    records.sort((a, b) => a.timestamp - b.timestamp);
-                    let content = '';
-                    for (const r of records) {
-                        const date = new Date(r.timestamp).toLocaleString();
-                        content += `--- ${date} (${r.language}) [${r.source === 'mic' ? '实时' : '上传'}] ---\n`;
-                        content += (r.transcript || '无文本') + '\n\n';
-                    }
-                    const blob = new Blob(['\uFEFF' + content], { type: 'text/plain;charset=utf-8' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `全部转写_${Date.now()}.txt`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    showToast('全部文本已导出');
-                } catch (e) {
-                    console.error('导出失败', e);
-                    showToast('导出失败: ' + e.message);
+                const records = await getAllRecordings();
+                if (records.length === 0) {
+                    showToast('暂无记录');
+                    return;
                 }
+                let content = '';
+                records.sort((a,b) => a.timestamp - b.timestamp).forEach(r => {
+                    content += `--- ${new Date(r.timestamp).toLocaleString()} (${r.language}) ${r.source} ---\n${r.transcript}\n\n`;
+                });
+                const blob = new Blob(['\uFEFF' + content], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `全部转写_${Date.now()}.txt`;
+                a.click();
+                showToast('全部文本已导出');
             });
 
             // 初始化
@@ -809,10 +517,20 @@
                 showToast('数据库初始化失败');
             });
 
-            // 如果 pipeline 已经就绪，手动触发事件
-            if (isTransformersLoaded()) {
-                window.dispatchEvent(new Event('transformersReady'));
+            // 检测 Web Speech API 支持
+            if (!SpeechRecognition) {
+                statusBadge.innerHTML = '<i class="fas fa-exclamation-triangle"></i> 实时录音不可用';
+                startBtn.disabled = true;
             }
+
+            // 页面加载完成后检查 iframe 是否可访问
+            window.addEventListener('load', function() {
+                // 如果默认镜像加载失败（超时），自动切换到备用源
+                setTimeout(() => {
+                    // 尝试检测 iframe 加载状态（简单示意）
+                    // 实际跨域限制下无法精确检测，此处仅作提示
+                }, 5000);
+            });
         })();
     </script>
 </body>

@@ -7,15 +7,112 @@
     <!-- 使用国内 BootCDN 加载 Font Awesome -->
     <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     
-    <!-- ========== 终极加载方案：本地优先 + CDN 回退 + 严格就绪检测 ========== -->
+    <!-- 设置 HuggingFace 镜像源（必须在加载任何模型之前） -->
     <script>
         (function() {
-            // 必须在加载 transformers 之前设置镜像源
             if (typeof self !== 'undefined') {
                 self.env = self.env || {};
                 self.env.remoteHost = 'https://hf-mirror.com/';  // 国内镜像
             }
+        })();
+    </script>
+    
+    <style>
+        /* 完整样式，此处省略以节省篇幅，实际使用时请保留之前的完整样式 */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #f5f7fa; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 12px; color: #1e293b; }
+        .app-container { width: 100%; max-width: 480px; background: white; border-radius: 32px; box-shadow: 0 20px 40px rgba(0,0,0,0.08), 0 6px 12px rgba(0,0,0,0.05); overflow: hidden; backdrop-filter: blur(2px); border: 1px solid rgba(255,255,255,0.3); }
+        .header { padding: 24px 24px 16px 24px; background: white; border-bottom: 1px solid #f0f2f5; }
+        .header h1 { font-size: 1.9rem; font-weight: 600; letter-spacing: -0.02em; background: linear-gradient(145deg, #0f172a, #334155); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+        .header h1 i { background: #eef2ff; padding: 8px; border-radius: 18px; color: #4f46e5; font-size: 1.4rem; -webkit-text-fill-color: #4f46e5; }
+        .lang-selector { display: flex; gap: 10px; margin-top: 12px; background: #f8fafc; padding: 6px; border-radius: 48px; border: 1px solid #e2e8f0; }
+        .lang-option { flex: 1; text-align: center; padding: 10px 6px; font-size: 1rem; font-weight: 500; border-radius: 40px; background: transparent; border: none; color: #64748b; transition: all 0.2s ease; cursor: pointer; }
+        .lang-option.active { background: #ffffff; color: #0f172a; box-shadow: 0 4px 10px rgba(0,0,0,0.03); font-weight: 600; border: 0.5px solid #d9e2ef; }
+        .live-card { background: #ffffff; margin: 20px 24px; padding: 24px 20px; border-radius: 28px; box-shadow: inset 0 2px 10px rgba(0,0,0,0.02), 0 8px 18px -6px rgba(0,20,40,0.12); border: 1px solid #ffffff80; min-height: 160px; display: flex; flex-direction: column; }
+        .transcript-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+        .transcript-label i { font-size: 0.9rem; }
+        .live-transcript { font-size: 1.3rem; line-height: 1.5; font-weight: 420; color: #0b1e33; word-break: break-word; white-space: pre-wrap; flex: 1; min-height: 80px; max-height: 240px; overflow-y: auto; padding-right: 8px; scrollbar-width: thin; }
+        .status-badge { align-self: flex-end; font-size: 0.75rem; padding: 6px 14px; background: #f1f4f9; border-radius: 40px; color: #475569; margin-top: 12px; display: inline-flex; align-items: center; gap: 6px; }
+        .status-badge.recording { background: #fee2e2; color: #b91c1c; }
+        .status-badge i { font-size: 0.7rem; }
+        .control-panel { display: flex; justify-content: space-around; padding: 8px 24px 24px 24px; gap: 12px; flex-wrap: wrap; }
+        .ctrl-btn { flex: 1; background: #fefefe; border: 1px solid #e9edf2; border-radius: 56px; padding: 16px 0; font-size: 1rem; font-weight: 550; color: #1e293b; box-shadow: 0 4px 8px rgba(0,0,0,0.02); transition: all 0.15s ease; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; backdrop-filter: blur(2px); }
+        .ctrl-btn:active { background: #f1f5f9; transform: scale(0.97); }
+        .ctrl-btn.primary { background: #1e293b; border-color: #1e293b; color: white; box-shadow: 0 10px 18px -8px #1e293b80; }
+        .ctrl-btn.primary:active { background: #0f172a; }
+        .ctrl-btn:disabled { opacity: 0.4; filter: grayscale(0.5); pointer-events: none; }
+        .upload-area { margin: 0 24px 20px 24px; padding: 16px; border: 2px dashed #cbd5e1; border-radius: 28px; text-align: center; background: #f8fafc; cursor: pointer; transition: 0.2s; }
+        .upload-area:hover { background: #f1f5f9; }
+        .upload-area i { font-size: 2rem; color: #4f46e5; margin-bottom: 8px; }
+        .upload-area p { color: #475569; font-weight: 500; }
+        #fileInput { display: none; }
+        .model-loading { font-size: 0.85rem; color: #2563eb; margin-top: 8px; }
+        .progress-bar { width: 100%; height: 6px; background: #e2e8f0; border-radius: 10px; margin-top: 10px; overflow: hidden; display: none; }
+        .progress-fill { height: 100%; background: #4f46e5; width: 0%; transition: width 0.3s; }
+        .history-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px 8px 24px; }
+        .history-header h2 { font-size: 1.25rem; font-weight: 590; color: #1e293b; }
+        .history-header button { background: none; border: none; color: #4f46e5; font-size: 0.95rem; font-weight: 500; padding: 8px 12px; border-radius: 30px; background: #f1f4f9; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+        .history-list { padding: 0 24px 30px 24px; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+        .history-item { background: #ffffff; border-radius: 22px; padding: 18px 16px; border: 1px solid #edf2f7; box-shadow: 0 6px 12px -8px rgba(0,0,0,0.08); transition: 0.1s; display: flex; flex-direction: column; gap: 12px; }
+        .history-meta { display: flex; align-items: center; gap: 12px; font-size: 0.75rem; color: #64748b; }
+        .history-meta i { width: 16px; }
+        .history-text { font-size: 1rem; font-weight: 450; color: #0f172a; background: #f8fafc; padding: 14px; border-radius: 18px; line-height: 1.4; word-break: break-word; max-height: 100px; overflow-y: auto; }
+        .history-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 4px; flex-wrap: wrap; }
+        .history-actions button { background: transparent; border: none; color: #4b5563; font-size: 1.1rem; width: 44px; height: 44px; border-radius: 40px; display: inline-flex; align-items: center; justify-content: center; background: #f1f4f9; cursor: pointer; transition: 0.1s; }
+        .history-actions button:active { background: #e2e8f0; }
+        .toast-message { position: fixed; bottom: 30px; left: 20px; right: 20px; max-width: 400px; margin: 0 auto; background: #1e293b; color: white; padding: 14px 24px; border-radius: 60px; font-size: 0.95rem; text-align: center; box-shadow: 0 20px 30px -10px black; opacity: 0; transition: 0.2s; pointer-events: none; z-index: 1000; }
+        .audio-meter { display: flex; gap: 2px; height: 20px; align-items: flex-end; margin-top: 8px; opacity: 0; transition: opacity 0.3s; }
+        .audio-bar { width: 4px; background: #4f46e5; border-radius: 2px; transition: height 0.1s; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="header">
+            <h1><i class="fas fa-microphone-lines"></i> 语音转写·离线版</h1>
+            <div class="lang-selector" id="langSelector">
+                <button class="lang-option active" data-lang="zh-CN">🇨🇳 中文</button>
+                <button class="lang-option" data-lang="en-US">🇬🇧 英文</button>
+            </div>
+        </div>
 
+        <div class="live-card">
+            <div class="transcript-label"><i class="far fa-comment-dots"></i> 实时转写</div>
+            <div class="live-transcript" id="liveTranscript">点击开始，对着麦克风说话...</div>
+            <div class="audio-meter" id="audioMeter"></div>
+            <div class="status-badge" id="statusBadge"><i class="fas fa-circle"></i> 空闲</div>
+        </div>
+
+        <div class="control-panel">
+            <button class="ctrl-btn primary" id="startBtn"><i class="fas fa-play"></i> 开始</button>
+            <button class="ctrl-btn" id="stopBtn" disabled><i class="fas fa-stop"></i> 停止</button>
+        </div>
+
+        <div class="upload-area" id="uploadArea">
+            <i class="fas fa-cloud-upload-alt"></i>
+            <p>点击或拖拽上传音频文件</p>
+            <p style="font-size:0.8rem; color:#64748b;">支持 mp3, m4a, wav, webm 等 (离线识别，首次需下载模型)</p>
+            <div id="modelStatus" class="model-loading">⚡ 正在初始化加载...</div>
+            <div id="progressContainer" class="progress-bar">
+                <div id="progressFill" class="progress-fill"></div>
+            </div>
+        </div>
+        <input type="file" id="fileInput" accept="audio/*">
+
+        <div class="history-header">
+            <h2><i class="far fa-clock"></i> 本地记录</h2>
+            <button id="exportAllBtn"><i class="fas fa-download"></i> 全部导出</button>
+        </div>
+
+        <div class="history-list" id="historyList">
+            <div style="text-align: center; color: #94a3b8; padding: 30px 0;">暂无转写记录</div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast-message"></div>
+
+    <!-- ========== Transformers.js 加载逻辑移到 body 底部，确保 DOM 已存在 ========== -->
+    <script>
+        (function() {
             // 获取状态显示元素
             const modelStatus = document.getElementById('modelStatus');
             function setStatus(msg, isError = false) {
@@ -43,7 +140,7 @@
                     script.src = src;
                     script.onload = resolve;
                     script.onerror = () => reject(new Error(`加载失败: ${src}`));
-                    document.head.appendChild(script);
+                    document.head.appendChild(script); // 仍加到 head 中，不影响
                 });
             }
 
@@ -98,164 +195,12 @@
                 allFailed();
             }
 
-            // 延迟启动，确保 DOM 存在
-            setTimeout(loadTransformers, 100);
+            // 启动加载（DOM 已就绪）
+            loadTransformers();
         })();
     </script>
-    <!-- ========== 加载结束 ========== -->
 
-    <style>
-        /* 样式保持不变，此处完整保留以确保界面正常 */
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background: #f5f7fa; min-height: 100vh; display: flex; align-items: center; justify-content: center;
-            padding: 12px; color: #1e293b;
-        }
-        .app-container {
-            width: 100%; max-width: 480px; background: white; border-radius: 32px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.08), 0 6px 12px rgba(0,0,0,0.05);
-            overflow: hidden; backdrop-filter: blur(2px); border: 1px solid rgba(255,255,255,0.3);
-        }
-        .header { padding: 24px 24px 16px 24px; background: white; border-bottom: 1px solid #f0f2f5; }
-        .header h1 {
-            font-size: 1.9rem; font-weight: 600; letter-spacing: -0.02em;
-            background: linear-gradient(145deg, #0f172a, #334155); -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-            margin-bottom: 6px; display: flex; align-items: center; gap: 8px;
-        }
-        .header h1 i { background: #eef2ff; padding: 8px; border-radius: 18px; color: #4f46e5; font-size: 1.4rem; -webkit-text-fill-color: #4f46e5; }
-        .lang-selector {
-            display: flex; gap: 10px; margin-top: 12px; background: #f8fafc; padding: 6px; border-radius: 48px; border: 1px solid #e2e8f0;
-        }
-        .lang-option {
-            flex: 1; text-align: center; padding: 10px 6px; font-size: 1rem; font-weight: 500; border-radius: 40px;
-            background: transparent; border: none; color: #64748b; transition: all 0.2s ease; cursor: pointer;
-        }
-        .lang-option.active { background: #ffffff; color: #0f172a; box-shadow: 0 4px 10px rgba(0,0,0,0.03); font-weight: 600; border: 0.5px solid #d9e2ef; }
-        .live-card {
-            background: #ffffff; margin: 20px 24px; padding: 24px 20px; border-radius: 28px;
-            box-shadow: inset 0 2px 10px rgba(0,0,0,0.02), 0 8px 18px -6px rgba(0,20,40,0.12);
-            border: 1px solid #ffffff80; min-height: 160px; display: flex; flex-direction: column;
-        }
-        .transcript-label { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.5px; color: #94a3b8; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
-        .transcript-label i { font-size: 0.9rem; }
-        .live-transcript {
-            font-size: 1.3rem; line-height: 1.5; font-weight: 420; color: #0b1e33; word-break: break-word;
-            white-space: pre-wrap; flex: 1; min-height: 80px; max-height: 240px; overflow-y: auto; padding-right: 8px; scrollbar-width: thin;
-        }
-        .status-badge {
-            align-self: flex-end; font-size: 0.75rem; padding: 6px 14px; background: #f1f4f9; border-radius: 40px;
-            color: #475569; margin-top: 12px; display: inline-flex; align-items: center; gap: 6px;
-        }
-        .status-badge.recording { background: #fee2e2; color: #b91c1c; }
-        .status-badge i { font-size: 0.7rem; }
-        .control-panel { display: flex; justify-content: space-around; padding: 8px 24px 24px 24px; gap: 12px; flex-wrap: wrap; }
-        .ctrl-btn {
-            flex: 1; background: #fefefe; border: 1px solid #e9edf2; border-radius: 56px; padding: 16px 0;
-            font-size: 1rem; font-weight: 550; color: #1e293b; box-shadow: 0 4px 8px rgba(0,0,0,0.02);
-            transition: all 0.15s ease; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; backdrop-filter: blur(2px);
-        }
-        .ctrl-btn:active { background: #f1f5f9; transform: scale(0.97); }
-        .ctrl-btn.primary { background: #1e293b; border-color: #1e293b; color: white; box-shadow: 0 10px 18px -8px #1e293b80; }
-        .ctrl-btn.primary:active { background: #0f172a; }
-        .ctrl-btn:disabled { opacity: 0.4; filter: grayscale(0.5); pointer-events: none; }
-        .upload-area {
-            margin: 0 24px 20px 24px; padding: 16px; border: 2px dashed #cbd5e1; border-radius: 28px;
-            text-align: center; background: #f8fafc; cursor: pointer; transition: 0.2s;
-        }
-        .upload-area:hover { background: #f1f5f9; }
-        .upload-area i { font-size: 2rem; color: #4f46e5; margin-bottom: 8px; }
-        .upload-area p { color: #475569; font-weight: 500; }
-        #fileInput { display: none; }
-        .model-loading { font-size: 0.85rem; color: #2563eb; margin-top: 8px; }
-        .progress-bar {
-            width: 100%; height: 6px; background: #e2e8f0; border-radius: 10px; margin-top: 10px; overflow: hidden; display: none;
-        }
-        .progress-fill {
-            height: 100%; background: #4f46e5; width: 0%; transition: width 0.3s;
-        }
-        .history-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px 8px 24px; }
-        .history-header h2 { font-size: 1.25rem; font-weight: 590; color: #1e293b; }
-        .history-header button {
-            background: none; border: none; color: #4f46e5; font-size: 0.95rem; font-weight: 500;
-            padding: 8px 12px; border-radius: 30px; background: #f1f4f9; display: flex; align-items: center; gap: 6px; cursor: pointer;
-        }
-        .history-list { padding: 0 24px 30px 24px; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
-        .history-item {
-            background: #ffffff; border-radius: 22px; padding: 18px 16px; border: 1px solid #edf2f7;
-            box-shadow: 0 6px 12px -8px rgba(0,0,0,0.08); transition: 0.1s; display: flex; flex-direction: column; gap: 12px;
-        }
-        .history-meta { display: flex; align-items: center; gap: 12px; font-size: 0.75rem; color: #64748b; }
-        .history-meta i { width: 16px; }
-        .history-text {
-            font-size: 1rem; font-weight: 450; color: #0f172a; background: #f8fafc; padding: 14px;
-            border-radius: 18px; line-height: 1.4; word-break: break-word; max-height: 100px; overflow-y: auto;
-        }
-        .history-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 4px; flex-wrap: wrap; }
-        .history-actions button {
-            background: transparent; border: none; color: #4b5563; font-size: 1.1rem; width: 44px; height: 44px;
-            border-radius: 40px; display: inline-flex; align-items: center; justify-content: center;
-            background: #f1f4f9; cursor: pointer; transition: 0.1s;
-        }
-        .history-actions button:active { background: #e2e8f0; }
-        .toast-message {
-            position: fixed; bottom: 30px; left: 20px; right: 20px; max-width: 400px; margin: 0 auto;
-            background: #1e293b; color: white; padding: 14px 24px; border-radius: 60px; font-size: 0.95rem;
-            text-align: center; box-shadow: 0 20px 30px -10px black; opacity: 0; transition: 0.2s; pointer-events: none; z-index: 1000;
-        }
-        .audio-meter {
-            display: flex; gap: 2px; height: 20px; align-items: flex-end; margin-top: 8px; opacity: 0; transition: opacity 0.3s;
-        }
-        .audio-bar {
-            width: 4px; background: #4f46e5; border-radius: 2px; transition: height 0.1s;
-        }
-    </style>
-</head>
-<body>
-    <div class="app-container">
-        <div class="header">
-            <h1><i class="fas fa-microphone-lines"></i> 语音转写·离线版</h1>
-            <div class="lang-selector" id="langSelector">
-                <button class="lang-option active" data-lang="zh-CN">🇨🇳 中文</button>
-                <button class="lang-option" data-lang="en-US">🇬🇧 英文</button>
-            </div>
-        </div>
-
-        <div class="live-card">
-            <div class="transcript-label"><i class="far fa-comment-dots"></i> 实时转写</div>
-            <div class="live-transcript" id="liveTranscript">点击开始，对着麦克风说话...</div>
-            <div class="audio-meter" id="audioMeter"></div>
-            <div class="status-badge" id="statusBadge"><i class="fas fa-circle"></i> 空闲</div>
-        </div>
-
-        <div class="control-panel">
-            <button class="ctrl-btn primary" id="startBtn"><i class="fas fa-play"></i> 开始</button>
-            <button class="ctrl-btn" id="stopBtn" disabled><i class="fas fa-stop"></i> 停止</button>
-        </div>
-
-        <div class="upload-area" id="uploadArea">
-            <i class="fas fa-cloud-upload-alt"></i>
-            <p>点击或拖拽上传音频文件</p>
-            <p style="font-size:0.8rem; color:#64748b;">支持 mp3, m4a, wav, webm 等 (离线识别，首次需下载模型)</p>
-            <div id="modelStatus" class="model-loading">⚡ 正在初始化加载...</div>
-            <div id="progressContainer" class="progress-bar">
-                <div id="progressFill" class="progress-fill"></div>
-            </div>
-        </div>
-        <input type="file" id="fileInput" accept="audio/*">
-
-        <div class="history-header">
-            <h2><i class="far fa-clock"></i> 本地记录</h2>
-            <button id="exportAllBtn"><i class="fas fa-download"></i> 全部导出</button>
-        </div>
-
-        <div class="history-list" id="historyList">
-            <div style="text-align: center; color: #94a3b8; padding: 30px 0;">暂无转写记录</div>
-        </div>
-    </div>
-
-    <div id="toast" class="toast-message"></div>
-
+    <!-- 主体脚本（含 Whisper 识别、录音等） -->
     <script>
         (function() {
             // 初始化音频可视化条
@@ -324,7 +269,7 @@
 
             // 监听 transformersReady 事件，更新 UI
             window.addEventListener('transformersReady', () => {
-                modelStatus.innerHTML = '✅ Transformers.js 已就绪，可以上传文件';
+                if (modelStatus) modelStatus.innerHTML = '✅ Transformers.js 已就绪，可以上传文件';
             });
 
             // ---------- 数据库 ----------
@@ -665,13 +610,13 @@
                 }
 
                 isModelLoading = true;
-                modelStatus.innerText = '⏳ 正在加载模型（约 75MB）...';
+                if (modelStatus) modelStatus.innerText = '⏳ 正在加载模型（约 75MB）...';
                 progressContainer.style.display = 'block';
                 progressFill.style.width = '5%';
 
                 const timeoutId = setTimeout(() => {
                     if (isModelLoading) {
-                        modelStatus.innerText = '⚠️ 下载较慢，请耐心等待...';
+                        if (modelStatus) modelStatus.innerText = '⚠️ 下载较慢，请耐心等待...';
                         progressFill.style.width = '30%';
                     }
                 }, 30000);
@@ -689,13 +634,13 @@
                                 if (progress.status === 'progress' && progress.total) {
                                     const percent = Math.max(5, (progress.loaded / progress.total) * 100);
                                     progressFill.style.width = percent + '%';
-                                    modelStatus.innerText = `⏳ 下载中 ${Math.round(percent)}%`;
+                                    if (modelStatus) modelStatus.innerText = `⏳ 下载中 ${Math.round(percent)}%`;
                                 } else if (progress.status === 'init') {
                                     progressFill.style.width = '10%';
-                                    modelStatus.innerText = '⏳ 初始化...';
+                                    if (modelStatus) modelStatus.innerText = '⏳ 初始化...';
                                 } else if (progress.status === 'done') {
                                     progressFill.style.width = '100%';
-                                    modelStatus.innerText = '✅ 模型已就绪';
+                                    if (modelStatus) modelStatus.innerText = '✅ 模型已就绪';
                                 }
                             }
                         }
@@ -708,7 +653,7 @@
                 } catch (e) {
                     clearTimeout(timeoutId);
                     console.error('模型加载失败:', e);
-                    modelStatus.innerText = '❌ 加载失败，请刷新重试';
+                    if (modelStatus) modelStatus.innerText = '❌ 加载失败，请刷新重试';
                     progressFill.style.width = '0%';
                     showToast('模型加载失败: ' + e.message);
                     transformersPipeline = null;
@@ -759,7 +704,7 @@
                 }
 
                 showToast('正在识别，请稍候...');
-                modelStatus.innerText = '🔍 识别中...';
+                if (modelStatus) modelStatus.innerText = '🔍 识别中...';
 
                 let audioContext = null;
                 let offlineCtx = null;
@@ -808,7 +753,7 @@
                     }
                     audioContext = null;
                     offlineCtx = null;
-                    modelStatus.innerText = '✅ 模型已就绪';
+                    if (modelStatus) modelStatus.innerText = '✅ 模型已就绪';
                     fileInput.value = '';
                 }
             });

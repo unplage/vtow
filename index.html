@@ -184,7 +184,7 @@
 
     <div id="toast" class="toast-message"></div>
 
-    <!-- 关键修复：使用 ES Module 动态导入 -->
+    <!-- 使用 ES Module 动态导入 -->
     <script type="module">
         // ========== 关键修复 1: 在 import 之前强制设置环境变量 ==========
         if (typeof self !== 'undefined') {
@@ -748,42 +748,53 @@
             fileInput.click();
         });
 
-        // 文件选择处理
+        // ========== 关键修复 5: 文件选择处理（增强反馈版） ==========
         fileInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
+            // 显示文件已选中
+            modelStatus.innerText = `📁 已选择文件: ${file.name}`;
+            progressContainer.style.display = 'block';
+            progressFill.style.width = '10%';
+            document.getElementById('errorDetails').style.display = 'none';
+
+            // 验证文件
             const validExts = ['.mp3', '.m4a', '.wav', '.webm', '.ogg', '.aac'];
             const ext = '.' + file.name.split('.').pop().toLowerCase();
             if (!validExts.includes(ext)) {
                 showToast('请选择有效的音频文件');
-                fileInput.value = '';
+                resetFileInput();
                 return;
             }
             if (file.size > 50 * 1024 * 1024) {
                 showToast('文件过大（>50MB），请分割后上传');
-                fileInput.value = '';
+                resetFileInput();
                 return;
             }
 
+            // 确保模型就绪（显示等待提示）
+            modelStatus.innerText = '⏳ 正在准备模型，首次使用需下载...';
+            progressFill.style.width = '20%';
+            
             let pipe;
             try {
-                pipe = await getPipeline();  // 这里会等待加载完成
+                pipe = await getPipeline();  // 可能触发模型下载
             } catch (err) {
                 showToast('模型加载失败，请稍后重试');
-                fileInput.value = '';
+                resetFileInput();
                 return;
             }
 
             if (!pipe) {
                 showToast('模型未就绪，请稍后重试');
-                fileInput.value = '';
+                resetFileInput();
                 return;
             }
 
-            showToast('正在识别，请稍候...');
-            modelStatus.innerText = '🔍 识别中...';
-            document.getElementById('errorDetails').style.display = 'none';
+            // 模型已就绪，开始处理音频
+            modelStatus.innerText = '🔍 正在解码音频...';
+            progressFill.style.width = '40%';
 
             let audioContext = null;
             let offlineCtx = null;
@@ -794,6 +805,9 @@
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
                 
+                modelStatus.innerText = '🔍 正在重采样音频...';
+                progressFill.style.width = '60%';
+
                 const targetSampleRate = 16000;
                 const duration = audioBuffer.duration;
                 const newLength = Math.ceil(duration * targetSampleRate);
@@ -807,6 +821,9 @@
                 const renderedBuffer = await offlineCtx.startRendering();
                 const audioData = renderedBuffer.getChannelData(0);
 
+                modelStatus.innerText = '🤖 正在识别语音，请稍候...';
+                progressFill.style.width = '80%';
+
                 const language = currentLanguage === 'zh-CN' ? 'zh' : 'en';
                 const result = await pipe(audioData, { 
                     language: language, 
@@ -816,28 +833,49 @@
                 
                 const transcript = result.text;
 
+                // 保存记录
                 const originalBlob = new Blob([arrayBuffer], { type: file.type });
                 await addRecording(originalBlob, transcript, currentLanguage, 'upload');
 
+                // 显示结果
                 liveTranscriptEl.innerText = transcript;
+                modelStatus.innerText = '✅ 识别完成';
+                progressFill.style.width = '100%';
+                setTimeout(() => {
+                    progressContainer.style.display = 'none';
+                    if(isModelLoaded) modelStatus.innerText = '✅ 模型已就绪';
+                }, 2000);
+                
                 showToast('识别完成，已保存');
                 renderHistory();
                 
             } catch (err) {
                 console.error('识别失败:', err);
                 showToast('识别失败：' + err.message);
+                modelStatus.innerText = '❌ 识别失败';
+                // 显示错误详情
+                const errorDetails = document.getElementById('errorDetails');
+                errorDetails.innerHTML = '错误：' + err.message;
+                errorDetails.style.display = 'block';
             } finally {
                 if (audioContext && audioContext.state !== 'closed') {
                     await audioContext.close();
                 }
                 audioContext = null;
                 offlineCtx = null;
-                if(isModelLoaded) {
-                    modelStatus.innerText = '✅ 模型已就绪';
-                }
-                fileInput.value = '';
+                // 重置文件输入
+                resetFileInput();
             }
         });
+
+        // 辅助函数：重置文件输入并恢复状态
+        function resetFileInput() {
+            fileInput.value = '';
+            // 如果模型已加载，恢复就绪状态，否则保持错误提示
+            if (isModelLoaded) {
+                modelStatus.innerText = '✅ 模型已就绪';
+            }
+        }
 
         // ---------- 事件绑定 ----------
         startBtn.addEventListener('click', startRecording);

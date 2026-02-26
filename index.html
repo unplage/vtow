@@ -285,6 +285,9 @@
         let isModelLoading = false;
         let isModelLoaded = false;
 
+        // ========== 关键修复 3: 引入 pipelinePromise，确保多次调用等待同一个加载过程 ==========
+        let pipelinePromise = null;  // 用于存储加载模型的 Promise
+
         // IndexedDB
         const DB_NAME = 'VoiceTranscriptDB_v2';
         const STORE_NAME = 'recordings';
@@ -607,103 +610,115 @@
             liveTranscriptEl.innerText = '正在聆听...';
         }
 
-        // ========== 关键修复 3: 带重试机制的模型加载逻辑 ==========
+        // ========== 关键修复 4: 带重试机制的模型加载逻辑，并使用 pipelinePromise ==========
         async function loadWhisperPipeline() {
+            // 如果已经加载完成，直接返回 pipeline
             if (transformersPipeline) return transformersPipeline;
-            if (isModelLoading) {
-                showToast('模型正在加载中...');
-                return null;
-            }
+            
+            // 如果已经在加载中，返回已有的 Promise
+            if (pipelinePromise) return pipelinePromise;
 
-            isModelLoading = true;
-            modelStatus.innerText = '⏳ 正在连接镜像站下载模型...';
-            progressContainer.style.display = 'block';
-            progressFill.style.width = '5%';
-            document.getElementById('errorDetails').style.display = 'none';
+            // 创建新的加载 Promise
+            pipelinePromise = (async () => {
+                isModelLoading = true;
+                modelStatus.innerText = '⏳ 正在连接镜像站下载模型...';
+                progressContainer.style.display = 'block';
+                progressFill.style.width = '5%';
+                document.getElementById('errorDetails').style.display = 'none';
 
-            // 超时提示
-            const timeoutId = setTimeout(() => {
-                if (isModelLoading) {
-                    modelStatus.innerText = '⚠️ 下载较慢，请耐心等待 (大文件)...';
-                    progressFill.style.width = '30%';
-                }
-            }, 30000);
+                // 超时提示
+                const timeoutId = setTimeout(() => {
+                    if (isModelLoading) {
+                        modelStatus.innerText = '⚠️ 下载较慢，请耐心等待 (大文件)...';
+                        progressFill.style.width = '30%';
+                    }
+                }, 30000);
 
-            try {
-                let attempt = 0;
-                const maxAttempts = 3;
-                
-                while (attempt < maxAttempts) {
-                    attempt++;
-                    try {
-                        console.log(`尝试加载模型 (第 ${attempt} 次)...`);
-                        modelStatus.innerText = `⏳ 加载模型中... (尝试 ${attempt}/${maxAttempts})`;
-                        
-                        transformersPipeline = await pipeline(
-                            'automatic-speech-recognition',
-                            'Xenova/whisper-tiny',
-                            {
-                                quantized: true,
-                                revision: 'main',
-                                progress_callback: (progress) => {
-                                    if (progress.status === 'progress' && progress.total) {
-                                        const percent = Math.max(5, (progress.loaded / progress.total) * 100);
-                                        progressFill.style.width = percent + '%';
-                                        modelStatus.innerText = `⏳ 下载中 ${Math.round(percent)}%`;
-                                    } else if (progress.status === 'init') {
-                                        progressFill.style.width = '10%';
-                                        modelStatus.innerText = '⏳ 初始化模型...';
-                                    } else if (progress.status === 'done') {
-                                        progressFill.style.width = '100%';
-                                        modelStatus.innerText = '✅ 模型加载完成';
+                try {
+                    let attempt = 0;
+                    const maxAttempts = 3;
+                    
+                    while (attempt < maxAttempts) {
+                        attempt++;
+                        try {
+                            console.log(`尝试加载模型 (第 ${attempt} 次)...`);
+                            modelStatus.innerText = `⏳ 加载模型中... (尝试 ${attempt}/${maxAttempts})`;
+                            
+                            transformersPipeline = await pipeline(
+                                'automatic-speech-recognition',
+                                'Xenova/whisper-tiny',
+                                {
+                                    quantized: true,
+                                    revision: 'main',
+                                    progress_callback: (progress) => {
+                                        if (progress.status === 'progress' && progress.total) {
+                                            const percent = Math.max(5, (progress.loaded / progress.total) * 100);
+                                            progressFill.style.width = percent + '%';
+                                            modelStatus.innerText = `⏳ 下载中 ${Math.round(percent)}%`;
+                                        } else if (progress.status === 'init') {
+                                            progressFill.style.width = '10%';
+                                            modelStatus.innerText = '⏳ 初始化模型...';
+                                        } else if (progress.status === 'done') {
+                                            progressFill.style.width = '100%';
+                                            modelStatus.innerText = '✅ 模型加载完成';
+                                        }
                                     }
                                 }
-                            }
-                        );
-                        
-                        // 成功加载，跳出循环
-                        break; 
-                        
-                    } catch (innerError) {
-                        console.warn(`模型加载尝试 ${attempt} 失败:`, innerError);
-                        if (attempt >= maxAttempts) throw innerError;
-                        
-                        // 等待后重试 (指数退避)
-                        const waitTime = 2000 * attempt;
-                        modelStatus.innerText = `⚠️ 网络波动，${waitTime/1000}秒后重试...`;
-                        await new Promise(resolve => setTimeout(resolve, waitTime));
+                            );
+                            
+                            // 成功加载，跳出循环
+                            break; 
+                            
+                        } catch (innerError) {
+                            console.warn(`模型加载尝试 ${attempt} 失败:`, innerError);
+                            if (attempt >= maxAttempts) throw innerError;
+                            
+                            // 等待后重试 (指数退避)
+                            const waitTime = 2000 * attempt;
+                            modelStatus.innerText = `⚠️ 网络波动，${waitTime/1000}秒后重试...`;
+                            await new Promise(resolve => setTimeout(resolve, waitTime));
+                        }
                     }
+                    
+                    clearTimeout(timeoutId);
+                    isModelLoaded = true;
+                    showToast('模型加载完成！可以上传文件了');
+                    setTimeout(() => progressContainer.style.display = 'none', 2000);
+                    
+                } catch (e) {
+                    clearTimeout(timeoutId);
+                    console.error('模型加载最终失败:', e);
+                    modelStatus.innerText = '❌ 加载失败';
+                    progressFill.style.width = '0%';
+                    
+                    let errorMsg = e.message;
+                    if (errorMsg.includes('Failed to fetch')) {
+                        errorMsg = '网络连接失败 (Failed to fetch)<br>可能是镜像站暂时不可用，请清除缓存后重试。';
+                    }
+                    
+                    showError('模型加载失败：<br>' + errorMsg);
+                    showToast('模型加载失败，请检查网络');
+                    transformersPipeline = null;
+                    // 加载失败，清除 pipelinePromise 以便重试
+                    pipelinePromise = null;
+                    throw e;
+                } finally {
+                    isModelLoading = false;
                 }
-                
-                clearTimeout(timeoutId);
-                isModelLoaded = true;
-                showToast('模型加载完成！可以上传文件了');
-                setTimeout(() => progressContainer.style.display = 'none', 2000);
-                
-            } catch (e) {
-                clearTimeout(timeoutId);
-                console.error('模型加载最终失败:', e);
-                modelStatus.innerText = '❌ 加载失败';
-                progressFill.style.width = '0%';
-                
-                let errorMsg = e.message;
-                if (errorMsg.includes('Failed to fetch')) {
-                    errorMsg = '网络连接失败 (Failed to fetch)<br>可能是镜像站暂时不可用，请清除缓存后重试。';
-                }
-                
-                showError('模型加载失败：<br>' + errorMsg);
-                showToast('模型加载失败，请检查网络');
-                transformersPipeline = null;
-                throw e;
-            } finally {
-                isModelLoading = false;
-            }
-            return transformersPipeline;
+                return transformersPipeline;
+            })();
+
+            return pipelinePromise;
         }
 
         async function getPipeline() {
             if (transformersPipeline) return transformersPipeline;
-            return await loadWhisperPipeline();
+            // 如果没有正在进行的加载，则开始加载
+            if (!pipelinePromise) {
+                pipelinePromise = loadWhisperPipeline();
+            }
+            // 等待加载完成（返回 pipeline 或抛出异常）
+            return await pipelinePromise;
         }
 
         // 暴露给全局用于清除缓存
@@ -726,7 +741,8 @@
 
         // 上传区域点击
         uploadArea.addEventListener('click', () => {
-            if (!transformersPipeline && !isModelLoading) {
+            // 如果模型未加载且未在加载中，则触发加载（但不等待）
+            if (!transformersPipeline && !isModelLoading && !pipelinePromise) {
                 loadWhisperPipeline().catch(() => {});
             }
             fileInput.click();
@@ -750,7 +766,15 @@
                 return;
             }
 
-            const pipe = await getPipeline();
+            let pipe;
+            try {
+                pipe = await getPipeline();  // 这里会等待加载完成
+            } catch (err) {
+                showToast('模型加载失败，请稍后重试');
+                fileInput.value = '';
+                return;
+            }
+
             if (!pipe) {
                 showToast('模型未就绪，请稍后重试');
                 fileInput.value = '';

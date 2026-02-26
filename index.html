@@ -3,8 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
+    <!-- 关键修复：添加跨域隔离头，允许使用 SharedArrayBuffer -->
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
+    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
     <title>语音转写 · 离线版 (Whisper)</title>
-    <!-- 使用国内 BootCDN 加载 Font Awesome -->
     <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     
     <style>
@@ -112,6 +114,10 @@
         .audio-bar {
             width: 4px; background: #4f46e5; border-radius: 2px; transition: height 0.1s;
         }
+        .error-details {
+            font-size: 0.75rem; color: #dc2626; background: #fef2f2; padding: 8px; border-radius: 8px;
+            margin-top: 8px; word-break: break-all; display: none;
+        }
     </style>
 </head>
 <body>
@@ -141,6 +147,7 @@
             <p>点击或拖拽上传音频文件</p>
             <p style="font-size:0.8rem; color:#64748b;">支持 mp3, m4a, wav, webm 等 (离线识别，首次需下载模型)</p>
             <div id="modelStatus" class="model-loading">⚡ 准备就绪</div>
+            <div id="errorDetails" class="error-details"></div>
             <div id="progressContainer" class="progress-bar">
                 <div id="progressFill" class="progress-fill"></div>
             </div>
@@ -159,18 +166,63 @@
 
     <div id="toast" class="toast-message"></div>
 
-    <!-- 使用 ES Module 方式加载最新版 Transformers.js -->
+    <!-- 关键修复：使用 ES Module 动态导入，配合国内 CDN -->
     <script type="module">
-        // 设置国内镜像源（必须在 import 之前）
+        // ========== 关键修复 1: 在 import 之前设置环境变量 ==========
         if (typeof self !== 'undefined') {
             self.env = self.env || {};
+            // 使用国内镜像源 (Hugging Face 中国镜像)
             self.env.remoteHost = 'https://hf-mirror.com/';
+            // 启用缓存
             self.env.useCache = true;
+            // 禁用 WebGPU (避免兼容性问题，使用 WASM 后端)
+            self.env.backends = ['wasm'];
         }
 
-        // 从 CDN 导入最新版 transformers.js
-        import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5';
+        // ========== 关键修复 2: 使用可靠的 CDN 导入 ==========
+        // 方案 A: 使用 jsDelivr (首选)
+        const CDN_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5/+esm';
+        
+        let pipeline, env;
+        
+        try {
+            // 动态导入 transformers.js
+            const transformers = await import(CDN_URL);
+            pipeline = transformers.pipeline;
+            env = transformers.env;
+            
+            console.log('✅ Transformers.js 加载成功');
+            document.getElementById('modelStatus').innerText = '✅ 库已加载，可上传文件';
+        } catch (importError) {
+            console.error('❌ CDN 导入失败:', importError);
+            showError('CDN 加载失败: ' + importError.message);
+            
+            // 回退方案：尝试 unpkg
+            try {
+                const fallbackTransformers = await import('https://unpkg.com/@huggingface/transformers@3.7.5/+esm');
+                pipeline = fallbackTransformers.pipeline;
+                env = fallbackTransformers.env;
+                console.log('✅ 从 unpkg 回退加载成功');
+                document.getElementById('modelStatus').innerText = '✅ 库已加载 (回退源)';
+            } catch (fallbackError) {
+                console.error('❌ 所有 CDN 均失败:', fallbackError);
+                showError('所有 CDN 均失败，请检查网络或刷新页面<br>错误：' + fallbackError.message);
+                throw new Error('Transformers.js 无法加载');
+            }
+        }
 
+        // 辅助函数：显示错误详情
+        function showError(msg) {
+            const errorEl = document.getElementById('errorDetails');
+            const statusEl = document.getElementById('modelStatus');
+            errorEl.innerHTML = msg;
+            errorEl.style.display = 'block';
+            statusEl.innerText = '❌ 加载失败';
+            statusEl.style.color = '#dc2626';
+        }
+
+        // ========== 以下保持原有逻辑，但使用导入的 pipeline ==========
+        
         // 初始化音频可视化条
         const audioMeter = document.getElementById('audioMeter');
         for (let i = 0; i < 20; i++) {
@@ -220,7 +272,7 @@
         const DB_VERSION = 1;
         let db = null;
 
-        // ---------- 数据库 ----------
+        // ---------- 数据库 (保持不变) ----------
         function openDB() {
             return new Promise((resolve, reject) => {
                 if (db) return resolve(db);
@@ -280,7 +332,7 @@
             });
         }
 
-        // ---------- 渲染历史 ----------
+        // ---------- 渲染历史 (保持不变) ----------
         async function renderHistory() {
             try {
                 const records = await getAllRecordings();
@@ -292,7 +344,6 @@
                 let html = '';
                 records.forEach(rec => {
                     const date = new Date(rec.timestamp).toLocaleString(undefined, { hour12: false });
-                    const preview = rec.transcript.length > 80 ? rec.transcript.slice(0,80)+'…' : rec.transcript;
                     html += `
                     <div class="history-item" data-id="${rec.id}">
                         <div class="history-meta">
@@ -309,7 +360,6 @@
                 });
                 historyListEl.innerHTML = html;
 
-                // 绑定事件
                 document.querySelectorAll('.history-item').forEach(item => {
                     const id = Number(item.dataset.id);
                     const record = records.find(r => r.id === id);
@@ -368,7 +418,7 @@
             setTimeout(() => toastEl.style.opacity = '0', duration);
         }
 
-        // ---------- 实时录音 ----------
+        // ---------- 实时录音 (保持不变) ----------
         function closeStream() {
             if (currentStream) {
                 currentStream.getTracks().forEach(track => track.stop());
@@ -447,7 +497,6 @@
                 return;
             }
 
-            // 设置音频分析器用于可视化
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioCtx.createAnalyser();
             analyser.fftSize = 64;
@@ -456,7 +505,6 @@
             visualizerInterval = setInterval(updateVisualizer, 100);
             audioMeter.style.opacity = '1';
 
-            // 设置语音识别
             if (SpeechRecognition) {
                 try {
                     recognition = new SpeechRecognition();
@@ -507,7 +555,6 @@
                 }
             }
 
-            // 设置媒体录制
             try {
                 mediaRecorder = new MediaRecorder(currentStream, {
                     mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
@@ -523,7 +570,6 @@
                 return;
             }
 
-            // 启动识别
             if (recognition) {
                 try { 
                     recognition.start(); 
@@ -542,7 +588,7 @@
             liveTranscriptEl.innerText = '正在聆听...';
         }
 
-        // ---------- Transformers.js Whisper 离线识别（修复版）----------
+        // ---------- Transformers.js Whisper 离线识别 (修复版) ----------
         async function loadWhisperPipeline() {
             if (transformersPipeline) return transformersPipeline;
             if (isModelLoading) {
@@ -555,7 +601,6 @@
             progressContainer.style.display = 'block';
             progressFill.style.width = '5%';
 
-            // 超时提示
             const timeoutId = setTimeout(() => {
                 if (isModelLoading) {
                     modelStatus.innerText = '⚠️ 下载较慢，请耐心等待...';
@@ -564,7 +609,7 @@
             }, 30000);
 
             try {
-                // 使用新版 API 直接导入 pipeline
+                // 使用导入的 pipeline 函数
                 transformersPipeline = await pipeline(
                     'automatic-speech-recognition',
                     'Xenova/whisper-tiny',
@@ -598,6 +643,7 @@
                 console.error('模型加载失败:', e);
                 modelStatus.innerText = '❌ 加载失败，请刷新重试';
                 progressFill.style.width = '0%';
+                showError('模型加载失败：<br>' + e.message + '<br><small>请检查网络连接，或尝试刷新页面</small>');
                 showToast('模型加载失败：' + e.message);
                 transformersPipeline = null;
                 throw e;
@@ -625,7 +671,6 @@
             const file = e.target.files[0];
             if (!file) return;
 
-            // 验证文件
             const validExts = ['.mp3', '.m4a', '.wav', '.webm', '.ogg', '.aac'];
             const ext = '.' + file.name.split('.').pop().toLowerCase();
             if (!validExts.includes(ext)) {
@@ -639,7 +684,6 @@
                 return;
             }
 
-            // 确保模型就绪
             const pipe = await getPipeline();
             if (!pipe) {
                 showToast('模型未就绪，请稍后重试');
@@ -748,15 +792,15 @@
         // 初始化
         openDB().then(() => {
             renderHistory();
-            modelStatus.innerText = '✅ 准备就绪，可上传文件';
         }).catch(e => {
             console.error(e);
             showToast('数据库初始化失败');
         });
 
-        // 暴露到全局供调试使用
+        // 暴露到全局供调试
         window.loadWhisperPipeline = loadWhisperPipeline;
         window.getPipeline = getPipeline;
+        window.transformersLoaded = true;
     </script>
 </body>
 </html>

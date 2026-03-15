@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <!-- PWA 基础配置 -->
     <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22%E8%AF%AD%E9%9F%B3%E8%BD%AC%E5%86%99%C2%B7%E7%A6%BB%E7%BA%BF%E7%89%88%22%2C%22short_name%22%3A%22%E8%BD%AC%E5%86%99%E5%99%A8%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f5f7fa%22%2C%22theme_color%22%3A%22%231e293b%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22%231e293b%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M63%2054l-9-5v-6c3-2%205-5%205-9%200-6-5-11-11-11s-11%205-11%2011c0%204%202%207%205%209v6l-9%205c-2%201-3%203-3%205v5h28v-5c0-2-1-4-3-5zM50%2028c3%200%206%203%206%206s-3%206-6%206-6-3-6-6%203-6%206-6z%22%2F%3E%3C%2Fsvg%3E%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     <meta name="theme-color" content="#1e293b">
     <title>语音转写 · 离线本地模型版 (PWA)</title>
@@ -121,9 +120,6 @@
             background: #1e293b; color: white; padding: 14px 24px; border-radius: 60px; font-size: 0.95rem;
             text-align: center; box-shadow: 0 20px 30px -10px black; opacity: 0; transition: 0.2s; pointer-events: none; z-index: 1000;
         }
-        .model-cache-status {
-            font-size: 0.75rem; color: #64748b; margin-top: 4px;
-        }
     </style>
 </head>
 <body>
@@ -154,12 +150,10 @@
             <i class="fas fa-cloud-upload-alt"></i>
             <p>点击或拖拽上传音频文件</p>
             <p style="font-size:0.8rem; color:#64748b;">使用本地模型，无需下载</p>
-            <div id="modelStatus" class="model-loading">⚡ 检查本地模型缓存...</div>
+            <div id="modelStatus" class="model-loading">⚡ 检查本地模型...</div>
             <div id="progressContainer" class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
             <div id="errorDetails" class="error-details"></div>
-            <div class="cache-control">
-                <a onclick="window.clearCacheAndReload?.()">❌ 清除缓存并重试</a>
-            </div>
+            <div class="cache-control"><a onclick="window.clearCacheAndReload?.()">❌ 清除缓存并重试</a></div>
         </div>
         <input type="file" id="fileInput" accept="audio/*">
 
@@ -177,26 +171,15 @@
 
     <script type="module">
         // ==========================================
-        // 方案一：预加载到 IndexedDB 缓存 实现
+        // 修复版：直接使用相对路径加载本地模型
         // ==========================================
 
-        const MODEL_NAME = 'xenova/whisper-tiny';
-        const MODEL_REVISION = 'main';
-        const MODEL_FILES = [
-            'config.json',
-            'tokenizer.json',
-            'tokenizer_config.json',
-            'preprocessor_config.json',
-            'generation_config.json',
-            'onnx/encoder_model_quantized.onnx',
-            'onnx/decoder_model_quantized.onnx',
-            'onnx/decoder_with_past_model_quantized.onnx'
-        ];
-
-        // Transformers.js 缓存数据库配置
-        const TRANSFORMERS_CACHE_NAME = 'transformers-cache';
+        // ✅ 关键修复：直接使用相对路径作为模型ID，而不是依赖 env.localModelPath
+        const LOCAL_MODEL_PATH = './models/xenova/whisper-tiny';
+        const MODEL_NAME = 'xenova/whisper-tiny'; // 用于显示
+        
         const CDN_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5/+esm';
-
+        
         let pipeline, env;
         let transformersPipeline = null;
         let isModelLoaded = false;
@@ -254,99 +237,8 @@
             if (seconds === undefined) return '--:--';
             const mins = Math.floor(seconds / 60);
             const secs = Math.floor(seconds % 60);
-            return `${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+            return `${mins.toString().padStart(2,'0'):${secs.toString().padStart(2,'0')}`;
         }
-
-        // ==========================================
-        // 核心：模型缓存管理器
-        // ==========================================
-
-        class ModelCacheManager {
-            constructor() {
-                this.cache = null;
-                this.modelBaseUrl = `./models/${MODEL_NAME}/`;
-            }
-
-            async init() {
-                this.cache = await caches.open(TRANSFORMERS_CACHE_NAME);
-                console.log('✅ Transformers 缓存已初始化');
-            }
-
-            // 检查模型是否已缓存
-            async isModelCached() {
-                if (!this.cache) await this.init();
-                
-                for (const file of MODEL_FILES) {
-                    const cacheKey = this.getCacheKey(file);
-                    const response = await this.cache.match(cacheKey);
-                    if (!response) {
-                        console.log(`❌ 缺失文件: ${file}`);
-                        return false;
-                    }
-                }
-                return true;
-            }
-
-            // 获取缓存键（模拟 Hugging Face 路径格式）
-            getCacheKey(filename) {
-                // Transformers.js 使用的缓存键格式
-                return `${CDN_URL}/${MODEL_NAME}/${filename}`;
-            }
-
-            // 预加载模型到缓存
-            async preloadModel(progressCallback) {
-                if (!this.cache) await this.init();
-                
-                const totalFiles = MODEL_FILES.length;
-                let loadedFiles = 0;
-
-                for (const file of MODEL_FILES) {
-                    const cacheKey = this.getCacheKey(file);
-                    const localUrl = `${this.modelBaseUrl}${file}`;
-                    
-                    // 检查是否已缓存
-                    const cached = await this.cache.match(cacheKey);
-                    if (cached) {
-                        console.log(`✅ 已缓存: ${file}`);
-                        loadedFiles++;
-                        progressCallback({ loaded: loadedFiles, total: totalFiles, current: file });
-                        continue;
-                    }
-
-                    try {
-                        console.log(`📥 下载: ${localUrl} -> ${cacheKey}`);
-                        const response = await fetch(localUrl);
-                        
-                        if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}: ${file}`);
-                        }
-
-                        // 克隆响应（因为 response 只能读取一次）
-                        const responseToCache = response.clone();
-                        await this.cache.put(cacheKey, responseToCache);
-                        
-                        loadedFiles++;
-                        progressCallback({ loaded: loadedFiles, total: totalFiles, current: file });
-                        console.log(`✅ 已缓存: ${file}`);
-                    } catch (err) {
-                        console.error(`❌ 缓存失败 ${file}:`, err);
-                        throw new Error(`无法加载模型文件: ${file} - ${err.message}`);
-                    }
-                }
-
-                return true;
-            }
-
-            // 清除缓存
-            async clearCache() {
-                if (!this.cache) await this.init();
-                const keys = await this.cache.keys();
-                await Promise.all(keys.map(key => this.cache.delete(key)));
-                console.log('🗑️ 缓存已清除');
-            }
-        }
-
-        const modelCache = new ModelCacheManager();
 
         // ==========================================
         // 数据库操作
@@ -413,7 +305,7 @@
         }
 
         // ==========================================
-        // 模型加载逻辑（使用缓存）
+        // 核心：模型加载逻辑（修复版）
         // ==========================================
 
         async function loadTransformersLibrary() {
@@ -437,15 +329,23 @@
         }
 
         async function setupEnvironment() {
-            // 配置环境变量
+            // ✅ 关键配置：禁用远程模型，允许本地模型
+            env.allowRemoteModels = false;
             env.allowLocalModels = true;
-            env.allowRemoteModels = false;  // 禁止远程下载
-            env.useCache = true;
+            
+            // ✅ 重要：在 Transformers.js 3.4.0+ 中，localModelPath 的行为有变化
+            // 我们直接使用相对路径作为模型ID传递给 pipeline，而不是依赖这个配置
+            env.localModelPath = LOCAL_MODEL_PATH;
+            
+            // 使用 WASM 后端
             env.backends = ['wasm'];
             env.verbose = true;
             
-            // 关键：设置缓存路径，让库从我们的 Service Worker 缓存读取
-            env.cacheDir = TRANSFORMERS_CACHE_NAME;
+            console.log('🔧 环境配置完成:', {
+                localModelPath: env.localModelPath,
+                allowLocalModels: env.allowLocalModels,
+                allowRemoteModels: env.allowRemoteModels
+            });
         }
 
         async function loadWhisperPipeline() {
@@ -454,42 +354,37 @@
 
             pipelinePromise = (async () => {
                 isModelLoaded = false;
-                modelStatus.innerText = '🔍 检查模型缓存...';
+                modelStatus.innerText = '🔍 加载 Transformers.js...';
                 progressContainer.style.display = 'block';
-                progressFill.style.width = '5%';
+                progressFill.style.width = '10%';
                 document.getElementById('errorDetails').style.display = 'none';
 
                 try {
-                    // 步骤 1: 预加载模型到缓存
-                    modelStatus.innerText = '📦 预加载模型文件...';
-                    await modelCache.preloadModel((progress) => {
-                        const percent = (progress.loaded / progress.total) * 40; // 最多40%
-                        progressFill.style.width = percent + '%';
-                        modelStatus.innerText = `⏳ 缓存 ${progress.current} (${progress.loaded}/${progress.total})`;
-                    });
-
-                    // 步骤 2: 加载 Transformers.js 库
-                    modelStatus.innerText = '⚡ 加载推理引擎...';
-                    progressFill.style.width = '50%';
+                    // 步骤 1: 加载库
                     await loadTransformersLibrary();
+                    
+                    // 步骤 2: 配置环境
                     await setupEnvironment();
+                    progressFill.style.width = '30%';
+                    
+                    // 步骤 3: 初始化 pipeline
+                    // ✅ 关键修复：直接使用相对路径作为模型ID，而不是 'xenova/whisper-tiny'
+                    modelStatus.innerText = '🤖 加载本地模型...';
+                    progressFill.style.width = '50%';
 
-                    // 步骤 3: 初始化 pipeline（从缓存读取）
-                    modelStatus.innerText = '🤖 初始化模型...';
-                    progressFill.style.width = '70%';
+                    console.log(`📂 尝试从 ${LOCAL_MODEL_PATH} 加载模型...`);
 
                     const pipe = await pipeline(
                         'automatic-speech-recognition',
-                        MODEL_NAME,
+                        LOCAL_MODEL_PATH,  // ✅ 直接使用 './models/xenova/whisper-tiny'
                         {
                             quantized: true,
-                            local_files_only: true,   // 强制使用本地/缓存文件
-                            revision: MODEL_REVISION,
+                            local_files_only: true,   // 强制使用本地文件
                             progress_callback: (p) => {
                                 if (p.status === 'progress' && p.total) {
-                                    const percent = 70 + ((p.loaded / p.total) * 30);
+                                    const percent = 50 + ((p.loaded / p.total) * 50);
                                     progressFill.style.width = percent + '%';
-                                    modelStatus.innerText = `⏳ 加载模型组件 ${Math.round(percent)}%`;
+                                    modelStatus.innerText = `⏳ 加载模型 ${Math.round(percent)}%`;
                                 } else if (p.status === 'done') {
                                     progressFill.style.width = '100%';
                                 }
@@ -499,7 +394,7 @@
 
                     isModelLoaded = true;
                     transformersPipeline = pipe;
-                    modelStatus.innerText = '✅ 模型就绪（离线模式）';
+                    modelStatus.innerText = '✅ 模型就绪（完全离线）';
                     showToast('本地模型加载成功');
                     setTimeout(() => progressContainer.style.display = 'none', 2000);
                     return pipe;
@@ -511,15 +406,22 @@
                     progressFill.style.width = '0%';
                     
                     let errorMsg = '';
-                    if (err.message.includes('404') || err.message.includes('无法加载')) {
-                        errorMsg = `模型文件缺失。请确认以下路径存在：<br>
-                        models/${MODEL_NAME}/<br>
+                    if (err.message.includes('local_files_only=true') || err.message.includes('not found locally')) {
+                        errorMsg = `<strong>模型文件未找到</strong><br>
+                        请确认以下路径存在（相对于 index.html）：<br><br>
+                        <code>${LOCAL_MODEL_PATH}/</code><br>
                         ├── config.json<br>
                         ├── tokenizer.json<br>
-                        ├── onnx/encoder_model_quantized.onnx<br>
-                        └── ...`;
-                    } else if (err.message.includes('CORS')) {
-                        errorMsg = 'CORS 错误：请确保通过 HTTP 服务器访问（不能是 file:// 协议）';
+                        ├── tokenizer_config.json<br>
+                        ├── preprocessor_config.json<br>
+                        ├── generation_config.json<br>
+                        └── onnx/<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;├── encoder_model_quantized.onnx<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;├── decoder_model_quantized.onnx<br>
+                        &nbsp;&nbsp;&nbsp;&nbsp;└── decoder_with_past_model_quantized.onnx<br><br>
+                        <strong>当前错误：</strong>${err.message}`;
+                    } else if (err.message.includes('fetch') || err.message.includes('network')) {
+                        errorMsg = `网络错误：${err.message}<br>请确保通过 HTTP 服务器访问（不能使用 file:// 协议）`;
                     } else {
                         errorMsg = `错误: ${err.message}`;
                     }
@@ -901,7 +803,7 @@
 
         function resetFileInput() {
             fileInput.value = '';
-            if (isModelLoaded) modelStatus.innerText = '✅ 模型已就绪（离线模式）';
+            if (isModelLoaded) modelStatus.innerText = '✅ 模型已就绪（完全离线）';
         }
 
         // ==========================================
@@ -952,14 +854,8 @@
         });
 
         window.clearCacheAndReload = async function() {
-            if (confirm('确定清除模型缓存并刷新？')) {
-                try {
-                    await modelCache.clearCache();
-                    showToast('缓存已清除，即将刷新...');
-                    setTimeout(() => location.reload(), 1000);
-                } catch (e) {
-                    showToast('清除失败: ' + e.message);
-                }
+            if (confirm('确定清除缓存并刷新？')) {
+                location.reload();
             }
         };
 

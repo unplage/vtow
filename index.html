@@ -6,10 +6,10 @@
     <!-- PWA 基础配置 -->
     <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22%E8%AF%AD%E9%9F%B3%E8%BD%AC%E5%86%99%C2%B7%E7%A6%BB%E7%BA%BF%E7%89%88%22%2C%22short_name%22%3A%22%E8%BD%AC%E5%86%99%E5%99%A8%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23f5f7fa%22%2C%22theme_color%22%3A%22%231e293b%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22%231e293b%22%2F%3E%3Cpath%20fill%3D%22%23fff%22%20d%3D%22M63%2054l-9-5v-6c3-2%205-5%205-9%200-6-5-11-11-11s-11%205-11%2011c0%204%202%207%205%209v6l-9%205c-2%201-3%203-3%205v5h28v-5c0-2-1-4-3-5zM50%2028c3%200%206%203%206%206s-3%206-6%206-6-3-6-6%203-6%206-6z%22%2F%3E%3C%2Fsvg%3E%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%22image%2Fsvg%2Bxml%22%7D%5D%7D">
     <meta name="theme-color" content="#1e293b">
-    <!-- 关键跨域隔离头 (GitHub Pages 虽然无法强制, 但保留以提升兼容性) -->
+    <!-- 跨域隔离头（GitHub Pages 虽无法强制，但保留以提升兼容性） -->
     <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
     <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
-    <title>语音转写 · 离线时间戳版 (PWA)</title>
+    <title>语音转写 · 离线本地模型版 (PWA)</title>
     <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -155,8 +155,8 @@
         <div class="upload-area" id="uploadArea">
             <i class="fas fa-cloud-upload-alt"></i>
             <p>点击或拖拽上传音频文件</p>
-            <p style="font-size:0.8rem; color:#64748b;">支持 mp3/m4a/wav/webm (模型自动下载)</p>
-            <div id="modelStatus" class="model-loading">⚡ 准备就绪</div>
+            <p style="font-size:0.8rem; color:#64748b;">使用本地模型，无需下载</p>
+            <div id="modelStatus" class="model-loading">⚡ 检查本地模型...</div>
             <div id="progressContainer" class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
             <div id="errorDetails" class="error-details"></div>
             <div class="cache-control"><a onclick="window.clearCacheAndReload?.()">❌ 清除缓存并重试</a></div>
@@ -176,16 +176,19 @@
     <div id="toast" class="toast-message"></div>
 
     <script type="module">
-        // --- 环境配置 (确保 WASM 后端，不使用 SharedArrayBuffer) ---
+        // --- 配置环境变量，强制使用本地模型 ---
         if (typeof self !== 'undefined') {
             self.env = self.env || {};
-            self.env.remoteHost = 'https://hf-mirror.com';
+            // 本地模型路径（相对于 index.html）
+            self.env.localModelPath = './models/';
+            self.env.allowLocalModels = true;
+            self.env.allowRemoteModels = false;      // 禁用远程下载，只使用本地
+            self.env.backends = ['wasm'];              // 使用 WASM 后端
             self.env.useCache = true;
-            self.env.backends = ['wasm'];
-            self.env.timeout = 60000;
+            self.env.verbose = true;                    // 可设为 false 减少日志
         }
 
-        // --- 动态导入 Transformers.js (带备用 CDN) ---
+        // --- 动态导入 Transformers.js (使用 CDN，但模型文件从本地加载) ---
         const CDN_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5/+esm';
         let pipeline, env;
         try {
@@ -204,6 +207,15 @@
                 document.getElementById('errorDetails').style.display = 'block';
                 throw new Error('无法加载 Transformers.js');
             }
+        }
+
+        // 将我们设置的环境变量应用到 transformers 的 env 对象
+        if (env) {
+            env.localModelPath = './models/';
+            env.allowLocalModels = true;
+            env.allowRemoteModels = false;
+            env.backends = ['wasm'];
+            env.useCache = true;
         }
 
         // --- DOM 元素 ---
@@ -236,10 +248,10 @@
         let recognition = null;
         let isRecording = false;
         let userStopped = false;
-        let audioChunks = [];               // 原始音频块
-        let currentSegments = [];            // 当前录音的片段 { start: number, end: number, text: string }
-        let segmentStartTime = null;          // 当前片段开始时间戳 (毫秒)
-        let lastFinalText = '';               // 避免重复添加相同 final 结果
+        let audioChunks = [];
+        let currentSegments = [];
+        let segmentStartTime = null;
+        let lastFinalText = '';
         let currentLanguage = 'zh-CN';
         let analyser = null;
         let visualizerInterval = null;
@@ -249,10 +261,10 @@
         let isModelLoaded = false;
         let pipelinePromise = null;
 
-        // IndexedDB  (版本 2 支持片段存储)
+        // IndexedDB (版本 2 支持片段存储)
         const DB_NAME = 'VoiceTranscriptDB_v2';
         const STORE_NAME = 'recordings';
-        const DB_VERSION = 2;  // 升级以支持 segments
+        const DB_VERSION = 2;
         let db = null;
 
         // --- 辅助函数 ---
@@ -274,7 +286,7 @@
             return `${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
         }
 
-        // --- 数据库操作 (支持 segments) ---
+        // --- 数据库操作 ---
         function openDB() {
             return new Promise((resolve, reject) => {
                 if (db) return resolve(db);
@@ -289,10 +301,6 @@
                     if (!db.objectStoreNames.contains(STORE_NAME)) {
                         const store = db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
                         store.createIndex('timestamp', 'timestamp', { unique: false });
-                    } else {
-                        // 升级到版本2: 检查现有数据并添加 segments 字段 (默认为空数组)
-                        const store = e.target.transaction.objectStore(STORE_NAME);
-                        // 无需修改，使用时若没有segments则自动设为[]
                     }
                 };
             });
@@ -309,7 +317,7 @@
                     transcript: fullText || ' ',
                     language: lang,
                     source: source,
-                    segments: segments.map(s => ({ start: s.start, end: s.end, text: s.text })) // 确保可序列化
+                    segments: segments.map(s => ({ start: s.start, end: s.end, text: s.text }))
                 };
                 const req = store.add(entry);
                 req.onsuccess = () => resolve();
@@ -339,7 +347,7 @@
             });
         }
 
-        // --- 渲染历史记录 (支持时间戳片段) ---
+        // --- 渲染历史记录 ---
         async function renderHistory() {
             try {
                 const records = await getAllRecordings();
@@ -447,7 +455,6 @@
                 </div>`;
             });
             liveSegmentList.innerHTML = html;
-            // 自动滚动到底部
             liveSegmentList.scrollTop = liveSegmentList.scrollHeight;
         }
 
@@ -477,12 +484,10 @@
             audioMeter.style.opacity = '0';
         }
 
-        // --- 录音结束保存 ---
         async function saveToDBAndCleanup() {
             try {
                 const blob = new Blob(audioChunks, { type: 'audio/webm' });
                 const fullText = currentSegments.map(s => s.text).join(' ').trim() || '（无语音识别文本）';
-                // 保存时附带片段
                 await addRecording(blob, fullText, currentLanguage, 'mic', currentSegments);
                 showToast('已保存到本地记录');
             } catch (e) {
@@ -495,12 +500,10 @@
                 stopBtn.disabled = true;
                 statusBadge.innerHTML = '<i class="fas fa-circle"></i> 空闲';
                 statusBadge.classList.remove('recording');
-                // 不清空片段，保留最后一次显示
                 renderHistory();
             }
         }
 
-        // --- 停止录音 ---
         function stopRecording() {
             if (!isRecording) return;
             userStopped = true;
@@ -512,14 +515,13 @@
             }
         }
 
-        // --- 开始录音 (使用浏览器语音识别获取实时片段) ---
         async function startRecording() {
             if (isRecording) return;
             currentSegments = [];
             audioChunks = [];
             userStopped = false;
             lastFinalText = '';
-            segmentStartTime = Date.now() / 1000; // 当前时间作为起始
+            segmentStartTime = Date.now() / 1000;
 
             try {
                 currentStream = await navigator.mediaDevices.getUserMedia({ 
@@ -530,7 +532,6 @@
                 return;
             }
 
-            // 音频可视化
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioCtx.createAnalyser();
             analyser.fftSize = 64;
@@ -539,12 +540,11 @@
             visualizerInterval = setInterval(updateVisualizer, 100);
             audioMeter.style.opacity = '1';
 
-            // 初始化语音识别 (用于实时片段)
             if (window.SpeechRecognition || window.webkitSpeechRecognition) {
                 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
                 recognition = new SR();
                 recognition.continuous = true;
-                recognition.interimResults = false; // 只取 final 结果形成片段
+                recognition.interimResults = false;
                 recognition.lang = currentLanguage;
 
                 recognition.onresult = (event) => {
@@ -552,17 +552,14 @@
                         const result = event.results[i];
                         if (result.isFinal) {
                             const text = result[0].transcript.trim();
-                            if (!text) continue;
-                            // 避免同一文本重复 (由于连续识别可能会重复)
-                            if (lastFinalText === text) continue;
+                            if (!text || lastFinalText === text) continue;
                             lastFinalText = text;
                             
                             const now = Date.now() / 1000;
-                            // 如果还没有开始时间，用当前时间减去一小段估算 (实际中可能需更精确)
                             const start = segmentStartTime || (now - 2);
                             const end = now;
                             currentSegments.push({ start, end, text });
-                            segmentStartTime = now; // 下一个片段从此开始
+                            segmentStartTime = now;
                             updateSegmentDisplay();
                         }
                     }
@@ -587,7 +584,6 @@
                 showToast('当前浏览器不支持语音识别，将无法生成时间戳', 3000);
             }
 
-            // 媒体录制
             try {
                 mediaRecorder = new MediaRecorder(currentStream, {
                     mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
@@ -612,65 +608,52 @@
             statusBadge.classList.add('recording');
         }
 
-        // --- 模型加载 (Whisper) ---
+        // --- 模型加载 (仅从本地) ---
         async function loadWhisperPipeline() {
             if (transformersPipeline) return transformersPipeline;
             if (pipelinePromise) return pipelinePromise;
 
             pipelinePromise = (async () => {
                 isModelLoaded = false;
-                modelStatus.innerText = '⏳ 连接镜像站下载模型...';
+                modelStatus.innerText = '🔍 正在加载本地模型...';
                 progressContainer.style.display = 'block';
-                progressFill.style.width = '5%';
+                progressFill.style.width = '10%';
                 document.getElementById('errorDetails').style.display = 'none';
 
-                const timeoutId = setTimeout(() => {
-                    if (!isModelLoaded) modelStatus.innerText = '⚠️ 下载较慢，请耐心等待...';
-                }, 30000);
-
                 try {
-                    let attempts = 0;
-                    while (attempts < 3) {
-                        attempts++;
-                        try {
-                            modelStatus.innerText = `⏳ 加载模型中... (尝试 ${attempts}/3)`;
-                            const pipe = await pipeline(
-                                'automatic-speech-recognition',
-                                'Xenova/whisper-tiny',
-                                {
-                                    quantized: true,
-                                    progress_callback: (p) => {
-                                        if (p.status === 'progress' && p.total) {
-                                            const percent = (p.loaded / p.total) * 100;
-                                            progressFill.style.width = percent + '%';
-                                            modelStatus.innerText = `⏳ 下载中 ${Math.round(percent)}%`;
-                                        } else if (p.status === 'done') {
-                                            progressFill.style.width = '100%';
-                                            modelStatus.innerText = '✅ 模型加载完成';
-                                        }
-                                    }
+                    // 尝试加载本地模型，设置 local_files_only: true
+                    const pipe = await pipeline(
+                        'automatic-speech-recognition',
+                        'Xenova/whisper-tiny',
+                        {
+                            quantized: true,
+                            local_files_only: true,   // 强制只使用本地文件
+                            progress_callback: (p) => {
+                                if (p.status === 'progress' && p.total) {
+                                    const percent = (p.loaded / p.total) * 100;
+                                    progressFill.style.width = percent + '%';
+                                    modelStatus.innerText = `⏳ 加载中 ${Math.round(percent)}%`;
+                                } else if (p.status === 'done') {
+                                    progressFill.style.width = '100%';
+                                    modelStatus.innerText = '✅ 模型加载完成';
                                 }
-                            );
-                            clearTimeout(timeoutId);
-                            isModelLoaded = true;
-                            transformersPipeline = pipe;
-                            showToast('模型就绪，可上传文件');
-                            setTimeout(() => progressContainer.style.display = 'none', 2000);
-                            return pipe;
-                        } catch (err) {
-                            console.warn(`尝试 ${attempts} 失败`, err);
-                            if (attempts === 3) throw err;
-                            await new Promise(r => setTimeout(r, 2000 * attempts));
+                            }
                         }
-                    }
-                } catch (e) {
-                    clearTimeout(timeoutId);
+                    );
+                    isModelLoaded = true;
+                    transformersPipeline = pipe;
+                    showToast('本地模型就绪');
+                    setTimeout(() => progressContainer.style.display = 'none', 2000);
+                    return pipe;
+                } catch (err) {
+                    console.error('本地模型加载失败:', err);
                     modelStatus.innerText = '❌ 加载失败';
-                    let msg = e.message.includes('fetch') ? '网络连接失败，请清除缓存重试' : e.message;
+                    progressFill.style.width = '0%';
+                    let msg = '本地模型文件缺失或损坏，请检查 models/xenova/whisper-tiny/ 目录是否包含所有必需文件。';
                     document.getElementById('errorDetails').innerHTML = msg;
                     document.getElementById('errorDetails').style.display = 'block';
                     pipelinePromise = null;
-                    throw e;
+                    throw err;
                 }
             })();
             return pipelinePromise;
@@ -682,7 +665,7 @@
             return await pipelinePromise;
         }
 
-        // 清除缓存
+        // 清除缓存 (主要是 IndexedDB 中的 transformers 缓存)
         window.clearCacheAndReload = async function() {
             if (confirm('确定清除模型缓存并刷新？')) {
                 if ('caches' in window) {
@@ -694,7 +677,7 @@
             }
         };
 
-        // --- 文件上传处理 (带时间戳) ---
+        // --- 文件上传处理 ---
         fileInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
@@ -710,7 +693,6 @@
                 return;
             }
 
-            // 确保模型加载
             let pipe;
             try {
                 pipe = await getPipeline();
@@ -749,7 +731,7 @@
                 const result = await pipe(audioData, {
                     language,
                     task: 'transcribe',
-                    return_timestamps: true   // 获取时间戳片段
+                    return_timestamps: true
                 });
 
                 const fullText = result.text;
@@ -761,15 +743,12 @@
                         text: c.text
                     }));
                 } else {
-                    // 如果没有chunks，用整个作为一个片段
                     segments = [{ start: 0, end: duration, text: fullText }];
                 }
 
-                // 保存
                 const originalBlob = new Blob([arrayBuffer], { type: file.type });
                 await addRecording(originalBlob, fullText, currentLanguage, 'upload', segments);
 
-                // 显示结果到实时区域
                 currentSegments = segments;
                 updateSegmentDisplay();
 
@@ -809,6 +788,7 @@
         });
 
         uploadArea.addEventListener('click', () => {
+            // 如果模型还没加载，尝试加载
             if (!isModelLoaded && !pipelinePromise) loadWhisperPipeline().catch(() => {});
             fileInput.click();
         });
@@ -836,12 +816,12 @@
             showToast('全部文本已导出');
         });
 
-        // 初始化
+        // 初始化数据库和模型
         openDB().then(() => {
             renderHistory();
         }).catch(console.error);
 
-        // 预加载模型 (可选)
+        // 预加载本地模型（不阻塞UI）
         setTimeout(() => {
             if (!isModelLoaded && !pipelinePromise) loadWhisperPipeline().catch(() => {});
         }, 1000);

@@ -624,7 +624,7 @@
                     // 尝试加载本地模型，设置 local_files_only: true
                     const pipe = await pipeline(
                         'automatic-speech-recognition',
-                        'Xenova/whisper-tiny',
+                        'xenova/whisper-tiny',
                         {
                             quantized: true,
                             local_files_only: true,   // 强制只使用本地文件

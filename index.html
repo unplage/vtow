@@ -171,15 +171,19 @@
 
     <script type="module">
         // ==========================================
-        // 修复版：直接使用相对路径加载本地模型
+        // 完全离线语音转写应用 (使用本地 Whisper 模型)
+        // 模型目录结构: models/xenova/whisper-tiny/
+        // 包含: config.json, tokenizer.json, tokenizer_config.json,
+        //       preprocessor_config.json (可选), generation_config.json (可选),
+        //       onnx/encoder_model_quantized.onnx 等
         // ==========================================
 
-        // ✅ 关键修复：直接使用相对路径作为模型ID，而不是依赖 env.localModelPath
-        const LOCAL_MODEL_PATH = './models/xenova/whisper-tiny';
-        const MODEL_NAME = 'xenova/whisper-tiny'; // 用于显示
-        
+        // ---------- 常量定义 ----------
+        const MODEL_ID = 'xenova/whisper-tiny';          // 模型标识（小写，匹配目录）
+        const LOCAL_MODEL_BASE = './models/';            // 本地模型根目录（相对于 index.html）
         const CDN_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5/+esm';
-        
+
+        // ---------- 全局变量 ----------
         let pipeline, env;
         let transformersPipeline = null;
         let isModelLoaded = false;
@@ -201,7 +205,7 @@
         const progressFill = document.getElementById('progressFill');
         const audioMeter = document.getElementById('audioMeter');
 
-        // 全局状态
+        // 录音相关状态
         let currentStream = null;
         let mediaRecorder = null;
         let recognition = null;
@@ -221,7 +225,7 @@
         const DB_VERSION = 2;
         let db = null;
 
-        // 辅助函数
+        // ---------- 辅助函数 ----------
         function showToast(msg, duration = 2000) {
             toastEl.style.opacity = '1';
             toastEl.innerText = msg;
@@ -234,16 +238,13 @@
         }
 
         function formatTime(seconds) {
-            if (seconds === undefined) return '--:--';
+            if (seconds === undefined || seconds === null) return '--:--';
             const mins = Math.floor(seconds / 60);
             const secs = Math.floor(seconds % 60);
-            return `${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
         }
 
-        // ==========================================
-        // 数据库操作
-        // ==========================================
-
+        // ---------- 数据库操作 ----------
         function openDB() {
             return new Promise((resolve, reject) => {
                 if (db) return resolve(db);
@@ -304,10 +305,7 @@
             });
         }
 
-        // ==========================================
-        // 核心：模型加载逻辑（修复版）
-        // ==========================================
-
+        // ---------- 模型加载核心 (修正版) ----------
         async function loadTransformersLibrary() {
             try {
                 const transformers = await import(CDN_URL);
@@ -329,18 +327,14 @@
         }
 
         async function setupEnvironment() {
-            // ✅ 关键配置：禁用远程模型，允许本地模型
+            if (!env) return;
+            // ✅ 关键配置：仅使用本地模型
             env.allowRemoteModels = false;
             env.allowLocalModels = true;
-            
-            // ✅ 重要：在 Transformers.js 3.4.0+ 中，localModelPath 的行为有变化
-            // 我们直接使用相对路径作为模型ID传递给 pipeline，而不是依赖这个配置
-            env.localModelPath = LOCAL_MODEL_PATH;
-            
-            // 使用 WASM 后端
+            env.localModelPath = LOCAL_MODEL_BASE;      // './models/'
             env.backends = ['wasm'];
-            env.verbose = true;
-            
+            env.verbose = true;                          // 便于调试
+
             console.log('🔧 环境配置完成:', {
                 localModelPath: env.localModelPath,
                 allowLocalModels: env.allowLocalModels,
@@ -360,26 +354,25 @@
                 document.getElementById('errorDetails').style.display = 'none';
 
                 try {
-                    // 步骤 1: 加载库
+                    // 1. 加载库
                     await loadTransformersLibrary();
-                    
-                    // 步骤 2: 配置环境
+
+                    // 2. 配置环境
                     await setupEnvironment();
                     progressFill.style.width = '30%';
-                    
-                    // 步骤 3: 初始化 pipeline
-                    // ✅ 关键修复：直接使用相对路径作为模型ID，而不是 'xenova/whisper-tiny'
+
+                    // 3. 初始化 pipeline
                     modelStatus.innerText = '🤖 加载本地模型...';
                     progressFill.style.width = '50%';
 
-                    console.log(`📂 尝试从 ${LOCAL_MODEL_PATH} 加载模型...`);
+                    console.log(`📂 尝试加载模型 ${MODEL_ID} 从 ${LOCAL_MODEL_BASE}...`);
 
                     const pipe = await pipeline(
                         'automatic-speech-recognition',
-                        LOCAL_MODEL_PATH,  // ✅ 直接使用 './models/xenova/whisper-tiny'
+                        MODEL_ID,                           // 使用模型 ID
                         {
                             quantized: true,
-                            local_files_only: true,   // 强制使用本地文件
+                            local_files_only: true,          // 强制仅本地文件
                             progress_callback: (p) => {
                                 if (p.status === 'progress' && p.total) {
                                     const percent = 50 + ((p.loaded / p.total) * 50);
@@ -387,6 +380,7 @@
                                     modelStatus.innerText = `⏳ 加载模型 ${Math.round(percent)}%`;
                                 } else if (p.status === 'done') {
                                     progressFill.style.width = '100%';
+                                    modelStatus.innerText = '✅ 模型就绪';
                                 }
                             }
                         }
@@ -394,38 +388,37 @@
 
                     isModelLoaded = true;
                     transformersPipeline = pipe;
-                    modelStatus.innerText = '✅ 模型就绪（完全离线）';
                     showToast('本地模型加载成功');
                     setTimeout(() => progressContainer.style.display = 'none', 2000);
                     return pipe;
 
                 } catch (err) {
-                    console.error('模型加载失败:', err);
+                    console.error('❌ 模型加载失败:', err);
                     isModelLoaded = false;
                     modelStatus.innerText = '❌ 加载失败';
                     progressFill.style.width = '0%';
-                    
+
                     let errorMsg = '';
                     if (err.message.includes('local_files_only=true') || err.message.includes('not found locally')) {
-                        errorMsg = `<strong>模型文件未找到</strong><br>
-                        请确认以下路径存在（相对于 index.html）：<br><br>
-                        <code>${LOCAL_MODEL_PATH}/</code><br>
+                        errorMsg = `<strong>本地模型文件缺失或路径错误</strong><br>
+                        请确认以下目录和文件存在（相对于 index.html）：<br><br>
+                        <code>models/xenova/whisper-tiny/</code><br>
                         ├── config.json<br>
                         ├── tokenizer.json<br>
                         ├── tokenizer_config.json<br>
-                        ├── preprocessor_config.json<br>
-                        ├── generation_config.json<br>
+                        ├── preprocessor_config.json (可选)<br>
+                        ├── generation_config.json (可选)<br>
                         └── onnx/<br>
                         &nbsp;&nbsp;&nbsp;&nbsp;├── encoder_model_quantized.onnx<br>
                         &nbsp;&nbsp;&nbsp;&nbsp;├── decoder_model_quantized.onnx<br>
                         &nbsp;&nbsp;&nbsp;&nbsp;└── decoder_with_past_model_quantized.onnx<br><br>
                         <strong>当前错误：</strong>${err.message}`;
                     } else if (err.message.includes('fetch') || err.message.includes('network')) {
-                        errorMsg = `网络错误：${err.message}<br>请确保通过 HTTP 服务器访问（不能使用 file:// 协议）`;
+                        errorMsg = `网络错误：${err.message}<br>请确保通过 HTTP 服务器访问（如 GitHub Pages），不要使用 file:// 协议。`;
                     } else {
-                        errorMsg = `错误: ${err.message}`;
+                        errorMsg = `未知错误: ${err.message}`;
                     }
-                    
+
                     document.getElementById('errorDetails').innerHTML = errorMsg;
                     document.getElementById('errorDetails').style.display = 'block';
                     pipelinePromise = null;
@@ -442,10 +435,7 @@
             return await pipelinePromise;
         }
 
-        // ==========================================
-        // UI 渲染函数
-        // ==========================================
-
+        // ---------- 历史记录渲染 ----------
         async function renderHistory() {
             try {
                 const records = await getAllRecordings();
@@ -459,7 +449,7 @@
                     const date = new Date(rec.timestamp).toLocaleString(undefined, { hour12: false });
                     const segs = rec.segments || [];
                     const sourceIcon = rec.source === 'mic' ? '🎤实时' : '📁上传';
-                    
+
                     let segmentsHtml = '';
                     if (segs.length > 0) {
                         segs.forEach(s => {
@@ -488,6 +478,7 @@
                 });
                 historyListEl.innerHTML = html;
 
+                // 绑定事件
                 document.querySelectorAll('.history-item').forEach(item => {
                     const id = Number(item.dataset.id);
                     const record = records.find(r => r.id === id);
@@ -538,13 +529,14 @@
             }
         }
 
+        // ---------- 实时显示更新 ----------
         function updateSegmentDisplay() {
             if (currentSegments.length === 0) {
                 liveSegmentList.innerHTML = '<div class="live-placeholder">点击开始，对着麦克风说话...</div>';
                 return;
             }
             let html = '';
-            currentSegments.forEach((seg, idx) => {
+            currentSegments.forEach((seg) => {
                 html += `<div class="segment-item">
                     <span class="segment-time">${formatTime(seg.start)} – ${formatTime(seg.end)}</span>
                     <span class="segment-text">${escapeHtml(seg.text)}</span>
@@ -554,10 +546,7 @@
             liveSegmentList.scrollTop = liveSegmentList.scrollHeight;
         }
 
-        // ==========================================
-        // 录音功能
-        // ==========================================
-
+        // ---------- 录音功能 ----------
         function updateVisualizer() {
             if (!analyser) return;
             const data = new Uint8Array(analyser.frequencyBinCount);
@@ -623,7 +612,7 @@
             segmentStartTime = Date.now() / 1000;
 
             try {
-                currentStream = await navigator.mediaDevices.getUserMedia({ 
+                currentStream = await navigator.mediaDevices.getUserMedia({
                     audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
                 });
             } catch (err) {
@@ -653,7 +642,7 @@
                             const text = result[0].transcript.trim();
                             if (!text || lastFinalText === text) continue;
                             lastFinalText = text;
-                            
+
                             const now = Date.now() / 1000;
                             const start = segmentStartTime || (now - 2);
                             const end = now;
@@ -707,10 +696,7 @@
             statusBadge.classList.add('recording');
         }
 
-        // ==========================================
-        // 文件上传处理
-        // ==========================================
-
+        // ---------- 文件上传处理 ----------
         async function handleFileUpload(file) {
             if (!file) return;
 
@@ -806,10 +792,7 @@
             if (isModelLoaded) modelStatus.innerText = '✅ 模型已就绪（完全离线）';
         }
 
-        // ==========================================
-        // 事件绑定
-        // ==========================================
-
+        // ---------- 事件绑定 ----------
         startBtn.addEventListener('click', startRecording);
         stopBtn.addEventListener('click', stopRecording);
 
@@ -855,14 +838,17 @@
 
         window.clearCacheAndReload = async function() {
             if (confirm('确定清除缓存并刷新？')) {
+                // 可选：清除 transformers 缓存
+                if ('caches' in window) {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map(k => caches.delete(k)));
+                }
+                indexedDB.deleteDatabase('transformers-cache');
                 location.reload();
             }
         };
 
-        // ==========================================
-        // 初始化
-        // ==========================================
-
+        // ---------- 初始化 ----------
         // 初始化音频可视化条
         for (let i = 0; i < 20; i++) {
             const bar = document.createElement('div');
@@ -876,7 +862,7 @@
             try {
                 await openDB();
                 renderHistory();
-                
+
                 // 延迟加载模型（不阻塞UI）
                 setTimeout(() => {
                     loadWhisperPipeline().catch(err => {

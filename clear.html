@@ -18,30 +18,20 @@
             --text-secondary: #666666;
         }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, var(--bg) 0%, #e4e8ec 100%);
             min-height: 100vh;
             padding: 20px;
             color: var(--text);
         }
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-        }
-        .header {
-            text-align: center;
-            padding: 40px 20px;
-        }
+        .container { max-width: 600px; margin: 0 auto; }
+        .header { text-align: center; padding: 40px 20px; }
         .header h1 {
             font-size: 28px;
             margin-bottom: 10px;
             background: linear-gradient(135deg, var(--primary), var(--secondary));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-        }
-        .header p {
-            color: var(--text-secondary);
-            font-size: 14px;
         }
         .card {
             background: var(--card);
@@ -54,21 +44,15 @@
             background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
             padding: 16px;
             border-radius: 12px;
-            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            font-family: monospace;
             font-size: 13px;
-            word-break: break-all;
             margin-bottom: 20px;
         }
         .path-display .label {
             color: var(--text-secondary);
             font-size: 11px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
             margin-bottom: 6px;
-        }
-        .path-display .value {
-            color: var(--primary);
-            font-weight: 600;
         }
         .stats {
             display: grid;
@@ -82,41 +66,22 @@
             background: var(--bg);
             border-radius: 12px;
         }
-        .stat-item .number {
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--primary);
-        }
-        .stat-item .label {
-            font-size: 11px;
-            color: var(--text-secondary);
-            margin-top: 4px;
-        }
+        .stat-item .number { font-size: 24px; font-weight: 700; color: var(--primary); }
         .log-container {
             background: #1e1e1e;
             border-radius: 12px;
             padding: 16px;
             max-height: 300px;
             overflow-y: auto;
-            font-family: 'SF Mono', Monaco, monospace;
+            font-family: monospace;
             font-size: 12px;
-            line-height: 1.6;
+            color: #fff;
             margin-bottom: 20px;
+            display: none;
         }
-        .log-item {
-            padding: 4px 0;
-            border-bottom: 1px solid #333;
-            display: flex;
-            align-items: flex-start;
-            gap: 8px;
-        }
-        .log-item:last-child { border-bottom: none; }
-        .log-time { color: #666; min-width: 60px; }
-        .log-icon { min-width: 16px; }
+        .log-item { padding: 4px 0; border-bottom: 1px solid #333; }
         .log-success { color: #4CAF50; }
         .log-skip { color: #9E9E9E; }
-        .log-error { color: #f44336; }
-        .log-info { color: #2196F3; }
         .btn {
             width: 100%;
             padding: 16px 24px;
@@ -125,83 +90,30 @@
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
         }
         .btn-primary {
             background: linear-gradient(135deg, var(--primary), var(--secondary));
             color: white;
         }
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
-        }
-        .btn-primary:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-        .btn-secondary {
-            background: var(--bg);
-            color: var(--text);
-            margin-top: 12px;
-        }
-        .btn-success {
-            background: var(--success);
-            color: white;
-            display: none;
-        }
-        .spinner {
-            width: 20px;
-            height: 20px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-top-color: white;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .success-message {
-            display: none;
-            text-align: center;
-            padding: 30px;
-        }
-        .success-message .icon {
-            font-size: 64px;
-            margin-bottom: 16px;
-        }
-        .success-message h2 {
-            color: var(--success);
-            margin-bottom: 8px;
-        }
-        .success-message p {
-            color: var(--text-secondary);
-            font-size: 14px;
-        }
-        .footer {
-            text-align: center;
-            padding: 20px;
-            color: var(--text-secondary);
-            font-size: 12px;
-        }
+        .btn-success { background: var(--success); color: white; display: none; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>🧹 PWA 缓存清理工具</h1>
-            <p>精确清理当前 PWA，不影响其他项目</p>
+            <p>只清理当前 PWA，不影响其他项目</p>
         </div>
 
         <div class="card">
             <div class="path-display">
-                <div class="label">当前 PWA 路径</div>
-                <div class="value" id="currentPath">检测中...</div>
+                <div class="label">当前 PWA</div>
+                <div id="pwaName" style="font-weight:600;color:var(--primary);">检测中...</div>
+                <div class="label" style="margin-top:8px;">当前路径</div>
+                <div id="currentPath">检测中...</div>
             </div>
 
-            <div class="stats" id="stats">
+            <div class="stats">
                 <div class="stat-item">
                     <div class="number" id="stat-sw">-</div>
                     <div class="label">Service Worker</div>
@@ -216,302 +128,183 @@
                 </div>
             </div>
 
-            <div class="log-container" id="logContainer" style="display:none;">
-                <div id="logContent"></div>
-            </div>
+            <div class="log-container" id="logContainer"></div>
 
-            <button class="btn btn-primary" id="clearBtn" onclick="startClear()">
-                <span>开始清理</span>
-            </button>
-
-            <button class="btn btn-success" id="backBtn" onclick="goBack()">
-                <span>✓ 返回 PWA</span>
-            </button>
-
-            <div class="success-message" id="successMsg">
-                <div class="icon">✅</div>
-                <h2>清理完成</h2>
-                <p>当前 PWA 的所有缓存已清除<br>下次访问将像第一次打开一样</p>
-            </div>
-        </div>
-
-        <div class="footer">
-            此工具只会清理当前路径下的数据，不会影响其他 PWA
+            <button class="btn btn-primary" id="clearBtn" onclick="startClear()">开始清理</button>
+            <button class="btn btn-success" id="backBtn" onclick="goBack()" style="display:none;">✓ 返回 PWA</button>
         </div>
     </div>
 
     <script>
     // ==================== 配置区域 ====================
-    // 自动检测当前 PWA 名称和路径
+    // 每个 PWA 只需要修改这里
+    
+    const CONFIG = {
+        // 可选：添加当前 PWA 特有的额外关键词
+        // 不要在这里添加其他 PWA 的关键词！
+        CUSTOM_KEYWORDS: [],
+        
+        // 严格模式：true = 更安全，只清理明确匹配的数据
+        STRICT_MODE: true,
+        
+        // 是否包含通用 PWA 关键词
+        INCLUDE_BUILTIN: true
+    };
+
+    // ==================== 核心代码 ====================
+
+    // 自动提取 PWA 信息
     const URL_INFO = new URL(location.href);
-    const CURRENT_PATH = URL_INFO.pathname;  // /pwa_name/clear.html
+    const CURRENT_PATH = URL_INFO.pathname;
     const PATH_SEGMENTS = CURRENT_PATH.split('/').filter(s => s);
-    const PWA_NAME = PATH_SEGMENTS[0] || 'unknown';  // pwa_name
-    const CURRENT_DIR = '/' + PATH_SEGMENTS.slice(0, -1).join('/') + '/';  // /pwa_name/
-    
-    // 显示当前路径
+    const PWA_NAME = PATH_SEGMENTS[0] || 'unknown';
+    const CURRENT_DIR = '/' + PATH_SEGMENTS.slice(0, -1).join('/') + '/';
+
+    // 显示信息
+    document.getElementById('pwaName').textContent = PWA_NAME;
     document.getElementById('currentPath').textContent = CURRENT_DIR;
-    
-    // 日志系统
-    function log(message, type = 'info') {
+
+    // 生成自动关键词
+    function generateKeywords(name) {
+        const keywords = [name];
+        const variations = [
+            name.toLowerCase(),
+            name.toUpperCase(),
+            name.replace(/-/g, ''),
+            name.replace(/_/g, ''),
+        ];
+        variations.forEach(v => { if (!keywords.includes(v)) keywords.push(v); });
+        
+        // 常见组合
+        keywords.push(name + 'DB', name + 'Cache', name + 'Storage', name + 'App');
+        return [...new Set(keywords)];
+    }
+
+    // 内置通用关键词（不包含任何特定应用）
+    const BUILTIN_KEYWORDS = [
+        'app_', 'pwa_', 'sw_', 'service-worker', 'workbox',
+        'version', 'build', 'deploy', 'cache_', 'storage_'
+    ];
+
+    const ALL_KEYWORDS = [
+        ...generateKeywords(PWA_NAME),
+        ...(CONFIG.INCLUDE_BUILTIN ? BUILTIN_KEYWORDS : []),
+        ...CONFIG.CUSTOM_KEYWORDS
+    ];
+
+    function log(msg, type = 'info') {
         const container = document.getElementById('logContainer');
-        const content = document.getElementById('logContent');
-        
         container.style.display = 'block';
-        
-        const time = new Date().toLocaleTimeString('zh-CN', { 
-            hour12: false, 
-            hour: '2-digit', 
-            minute: '2-digit', 
-            second: '2-digit' 
-        });
-        
-        const icons = {
-            success: '✓',
-            skip: '⊘',
-            error: '✗',
-            info: '•'
-        };
-        
-        const item = document.createElement('div');
-        item.className = `log-item log-${type}`;
-        item.innerHTML = `
-            <span class="log-time">${time}</span>
-            <span class="log-icon">${icons[type]}</span>
-            <span>${message}</span>
-        `;
-        
-        content.appendChild(item);
+        const div = document.createElement('div');
+        div.className = `log-item log-${type}`;
+        div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+        container.appendChild(div);
         container.scrollTop = container.scrollHeight;
     }
-    
-    // 更新统计
-    function updateStats(sw, cache, storage) {
-        document.getElementById('stat-sw').textContent = sw;
-        document.getElementById('stat-cache').textContent = cache;
-        document.getElementById('stat-storage').textContent = storage;
-    }
-    
-    // 预检测
-    async function preCheck() {
-        let swCount = 0, cacheCount = 0, storageCount = 0;
+
+    function isMatch(text) {
+        if (!text) return false;
         
-        // 检测 SW
-        if ('serviceWorker' in navigator) {
-            const regs = await navigator.serviceWorker.getRegistrations();
-            swCount = regs.filter(r => {
-                const scope = r.scope || '';
-                return scope.includes(PWA_NAME) || 
-                       scope === location.origin + CURRENT_DIR ||
-                       scope.startsWith(location.origin + CURRENT_DIR);
-            }).length;
+        // 严格模式：优先路径匹配
+        if (CONFIG.STRICT_MODE) {
+            return text.includes(CURRENT_DIR) || text.includes('/' + PWA_NAME + '/');
         }
         
-        // 检测缓存
-        if ('caches' in window) {
-            const keys = await caches.keys();
-            cacheCount = keys.filter(k => 
-                k.includes(PWA_NAME) || 
-                k.toLowerCase().includes(PWA_NAME.replace(/-/g, ''))
-            ).length;
-        }
-        
-        // 检测存储
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && (key.includes(PWA_NAME) || isAppKey(key))) {
-                storageCount++;
-            }
-        }
-        
-        updateStats(swCount, cacheCount, storageCount);
+        // 关键词匹配
+        return ALL_KEYWORDS.some(k => text.toLowerCase().includes(k.toLowerCase()));
     }
-    
-    // 判断是否为应用相关的 key
-    function isAppKey(key) {
-        const appPatterns = [
-            'app_', 'pwa_', 'sw_', 'cache_',
-            'version', 'build', 'deploy',
-            'service-worker', 'workbox'
-        ];
-        return appPatterns.some(p => key.toLowerCase().includes(p));
-    }
-    
-    // 核心清理函数
+
     async function startClear() {
         const btn = document.getElementById('clearBtn');
         btn.disabled = true;
-        btn.innerHTML = '<div class="spinner"></div><span>清理中...</span>';
+        btn.textContent = '清理中...';
         
-        log(`开始清理 PWA: ${PWA_NAME}`, 'info');
-        log(`目标路径: ${CURRENT_DIR}`, 'info');
-        
-        let clearedSW = 0, clearedCache = 0, clearedStorage = 0, clearedDB = 0;
+        log(`开始清理: ${PWA_NAME}`, 'info');
         
         try {
-            // ===== 步骤 1: Service Worker =====
-            log('检查 Service Worker...', 'info');
-            
+            // 1. Service Worker
             if ('serviceWorker' in navigator) {
                 const regs = await navigator.serviceWorker.getRegistrations();
-                log(`发现 ${regs.length} 个 SW`, 'info');
-                
                 for (const reg of regs) {
                     const scope = reg.scope || '';
-                    const scopePath = scope.replace(location.origin, '');
-                    
-                    // 精确匹配：只清理当前 PWA 的 SW
-                    const isThisPWA = 
-                        scopePath === CURRENT_DIR ||
-                        scopePath.startsWith(CURRENT_DIR) ||
-                        CURRENT_DIR.startsWith(scopePath);
-                    
-                    if (isThisPWA) {
+                    if (scope.includes(PWA_NAME) || scope.includes(CURRENT_DIR)) {
                         await reg.unregister();
-                        log(`注销 SW: ${scope}`, 'success');
-                        clearedSW++;
-                    } else {
-                        log(`跳过 SW: ${scope}`, 'skip');
+                        log(`✓ 注销 SW: ${scope}`, 'success');
                     }
                 }
-            } else {
-                log('浏览器不支持 Service Worker', 'skip');
             }
             
-            // ===== 步骤 2: Cache Storage =====
-            log('检查 Cache Storage...', 'info');
-            
+            // 2. Cache
             if ('caches' in window) {
                 const keys = await caches.keys();
-                log(`发现 ${keys.length} 个缓存`, 'info');
-                
                 for (const key of keys) {
-                    // 匹配规则：包含 PWA 名称或相关关键词
-                    const isThisPWA = 
-                        key.includes(PWA_NAME) ||
-                        key.includes(PWA_NAME.replace(/-/g, '').toLowerCase()) ||
-                        key.includes(PWA_NAME.replace(/_/g, '').toLowerCase()) ||
-                        key.toLowerCase().includes('wordlearner') ||  // 你的特定应用
-                        key.toLowerCase().includes('kmword');
-                    
-                    if (isThisPWA) {
+                    if (isMatch(key)) {
                         await caches.delete(key);
-                        log(`删除缓存: ${key}`, 'success');
-                        clearedCache++;
-                    } else {
-                        log(`跳过缓存: ${key}`, 'skip');
+                        log(`✓ 删除缓存: ${key}`, 'success');
                     }
                 }
             }
             
-            // ===== 步骤 3: IndexedDB =====
-            log('检查 IndexedDB...', 'info');
-            
+            // 3. IndexedDB
             try {
-                const databases = await indexedDB.databases?.() || [];
-                log(`发现 ${databases.length} 个数据库`, 'info');
-                
-                for (const db of databases) {
-                    const dbName = db.name || '';
-                    const isThisPWA = 
-                        dbName.includes(PWA_NAME) ||
-                        dbName.includes('WordLearner') ||
-                        dbName.includes('kmword') ||
-                        dbName.includes('wordDB');
-                    
-                    if (isThisPWA) {
-                        indexedDB.deleteDatabase(dbName);
-                        log(`删除数据库: ${dbName}`, 'success');
-                        clearedDB++;
-                    } else {
-                        log(`跳过数据库: ${dbName || 'unnamed'}`, 'skip');
+                const dbs = await indexedDB.databases?.() || [];
+                for (const db of dbs) {
+                    if (isMatch(db.name)) {
+                        indexedDB.deleteDatabase(db.name);
+                        log(`✓ 删除数据库: ${db.name}`, 'success');
                     }
                 }
-            } catch (e) {
-                // 浏览器不支持 databases() API，尝试删除已知数据库
-                const knownDBs = ['WordLearnerDB', 'kmword', PWA_NAME];
-                for (const dbName of knownDBs) {
-                    try {
-                        indexedDB.deleteDatabase(dbName);
-                        log(`尝试删除: ${dbName}`, 'info');
-                    } catch (err) {}
-                }
-            }
+            } catch(e) {}
             
-            // ===== 步骤 4: localStorage =====
-            log('检查 localStorage...', 'info');
-            
-            const keysToRemove = [];
-            for (let i = 0; i < localStorage.length; i++) {
+            // 4. localStorage
+            for (let i = localStorage.length - 1; i >= 0; i--) {
                 const key = localStorage.key(i);
-                if (!key) continue;
-                
-                // 匹配规则
-                const isThisPWA = 
-                    key.includes(PWA_NAME) ||
-                    key.includes('kmword') ||
-                    key.includes('WordLearner') ||
-                    key.includes('wordDB') ||
-                    key.includes('app_version') ||
-                    key.includes('app_build') ||
-                    key.includes('app_ver') ||
-                    key.includes('deploy_time') ||
-                    key.includes('_pending_clear') ||
-                    key.startsWith('sw_') ||
-                    key.startsWith('cache_');
-                
-                if (isThisPWA) {
-                    keysToRemove.push(key);
+                if (key && isMatch(key)) {
+                    localStorage.removeItem(key);
+                    log(`✓ 删除: ${key}`, 'success');
                 }
             }
             
-            keysToRemove.forEach(key => {
-                localStorage.removeItem(key);
-                log(`删除存储: ${key}`, 'success');
-                clearedStorage++;
-            });
+            sessionStorage.clear();
             
-            // ===== 步骤 5: sessionStorage =====
-            const ssKeys = Object.keys(sessionStorage);
-            let clearedSS = 0;
-            ssKeys.forEach(key => {
-                if (key.includes(PWA_NAME) || isAppKey(key)) {
-                    sessionStorage.removeItem(key);
-                    clearedSS++;
-                }
-            });
-            if (clearedSS > 0) {
-                log(`清理 sessionStorage: ${clearedSS} 项`, 'success');
-            }
-            
-            // ===== 完成 =====
-            log('========================', 'info');
-            log(`清理完成: ${clearedSW} SW, ${clearedCache} 缓存, ${clearedDB} 数据库, ${clearedStorage} 存储项`, 'success');
-            
-            // 更新统计
-            updateStats(0, 0, 0);
-            
-            // 显示成功界面
+            log('✅ 清理完成', 'success');
             btn.style.display = 'none';
-            document.getElementById('successMsg').style.display = 'block';
-            document.getElementById('backBtn').style.display = 'flex';
+            document.getElementById('backBtn').style.display = 'block';
             
         } catch (err) {
             log(`错误: ${err.message}`, 'error');
             btn.disabled = false;
-            btn.innerHTML = '<span>重试</span>';
+            btn.textContent = '重试';
         }
     }
-    
-    // 返回主页面
+
     function goBack() {
-        // 构建主页面 URL（同级目录下的 index.html）
-        const mainPage = CURRENT_DIR + 'index.html';
-        // 添加时间戳绕过缓存
-        location.href = mainPage + '?_=' + Date.now();
+        location.href = CURRENT_DIR + 'index.html?_=' + Date.now();
     }
-    
-    // 页面加载时预检测
+
+    // 预检测
+    async function preCheck() {
+        let sw = 0, cache = 0, storage = 0;
+        
+        if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            sw = regs.filter(r => (r.scope || '').includes(PWA_NAME)).length;
+        }
+        
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            cache = keys.filter(k => isMatch(k)).length;
+        }
+        
+        for (let i = 0; i < localStorage.length; i++) {
+            if (isMatch(localStorage.key(i))) storage++;
+        }
+        
+        document.getElementById('stat-sw').textContent = sw;
+        document.getElementById('stat-cache').textContent = cache;
+        document.getElementById('stat-storage').textContent = storage;
+    }
+
     window.addEventListener('load', preCheck);
     </script>
 </body>

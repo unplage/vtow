@@ -707,8 +707,8 @@
             progressFill.style.width = '10%';
             document.getElementById('errorDetails').style.display = 'none';
 
-            if (file.size > 50 * 1024 * 1024) {
-                showToast('文件过大 (>50MB)');
+            if (file.size > 200 * 1024 * 1024) {
+                showToast('文件过大 (>200MB)');
                 resetFileInput();
                 return;
             }

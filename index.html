@@ -519,9 +519,11 @@
 
                     item.querySelector('.delete-entry')?.addEventListener('click', async (e) => {
                         e.stopPropagation();
-                        await deleteRecording(id);
-                        renderHistory();
-                        showToast('已删除');
+                        if (confirm('确定要永久删除这条录音记录吗？')) {
+                            await deleteRecording(id);
+                            renderHistory();
+                            showToast('已删除');
+                        }
                     });
                 });
             } catch (e) {

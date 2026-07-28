@@ -14,9 +14,11 @@ export class Recorder {
     this._chunkInterval = null;
     this._analyserInterval = null;
     this._stopped = false;
+    this._onStopCalled = false;
   }
 
   async start() {
+    this._onStopCalled = false;
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
         audio: { sampleRate: 16000, channelCount: 1, echoCancellation: true, noiseSuppression: true }
@@ -52,17 +54,21 @@ export class Recorder {
     };
 
     this.mediaRecorder.onstop = () => {
-      if (this._stopped) return;
-      this._stopped = true;
-      const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
-      this._cleanup();
-      if (this.onStop) this.onStop(blob);
+      this._handleStop();
     };
 
     this.mediaRecorder.start(200);
 
     this._startChunkTimer();
     this._startAnalyserLoop();
+  }
+
+  _handleStop() {
+    if (this._onStopCalled) return;
+    this._onStopCalled = true;
+    const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
+    this._cleanup();
+    if (this.onStop) this.onStop(blob);
   }
 
   _startChunkTimer() {
@@ -98,13 +104,11 @@ export class Recorder {
   }
 
   stop() {
+    if (this._onStopCalled) return;
     if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
-      try { this.mediaRecorder.stop(); } catch (e) {}
-    } else if (!this._stopped) {
-      this._stopped = true;
-      const blob = new Blob(this.audioChunks, { type: 'audio/webm' });
-      this._cleanup();
-      if (this.onStop) this.onStop(blob);
+      try { this.mediaRecorder.stop(); } catch (e) { this._handleStop(); }
+    } else {
+      this._handleStop();
     }
   }
 

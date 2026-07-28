@@ -181,16 +181,18 @@ function toggleEditMode(id, item) {
   if (isEditing) {
     item.classList.remove('editing');
     const newTexts = [];
-    segs.forEach(s => newTexts.push(s.textContent));
+    segs.forEach(s => {
+      s.contentEditable = 'false';
+      newTexts.push(s.textContent);
+    });
     const fullText = newTexts.join(' ').trim();
     updateRecording(id, { transcript: fullText, segments: (filteredRecords.find(r => r.id === id)?.segments || []).map((s, i) => ({ ...s, text: newTexts[i] || s.text })) });
     refreshHistory();
   } else {
     item.classList.add('editing');
-    segs.forEach(s => {
-      s.contentEditable = 'true';
-      s.focus();
-    });
+    segs.forEach(s => s.contentEditable = 'true');
+    const first = segs[0];
+    if (first) first.focus();
   }
 }
 

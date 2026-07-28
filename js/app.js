@@ -1,9 +1,9 @@
 import { Recorder } from './recorder.js';
 import { decodeAudioFile, splitAudioChunks, validateAudioFile } from './uploader.js';
-import { initWorker, loadModel, transcribe, isReady, getCurrentModel } from './transcription.js';
+import { initWorker, loadModel, transcribe, isReady, getCurrentModel, isDownloadableModel, getDownloadSize, checkModelCache, clearModelCache } from './transcription.js';
 import { addRecording, getAllRecordings } from './storage.js';
 import { initHistory, refreshHistory, filterHistory, exportAll } from './history.js';
-import { getString, getLang, setLang, getTheme, setTheme, toggleTheme, initTheme, showToast, formatTime, escapeHtml, onLangChange, MODELS } from './ui.js';
+import { getString, getLang, setLang, getTheme, setTheme, toggleTheme, initTheme, showToast, formatTime, escapeHtml, onLangChange, MODELS, showConfirmDialog, showDownloadDialog, hideDownloadDialog, updateDownloadProgress } from './ui.js';
 
 const recorder = new Recorder();
 let isRecording = false;
@@ -11,6 +11,8 @@ let currentLanguage = 'zh-CN';
 let currentModelId = localStorage.getItem('vtw-model') || 'Xenova/whisper-base';
 let currentSegments = [];
 let chunkTimer = null;
+let downloadTotalLoaded = 0;
+let downloadTotalSize = 0;
 
 function $(id) { return document.getElementById(id); }
 
@@ -30,9 +32,19 @@ function init() {
 }
 
 function bindEvents() {
-  $('startBtn')?.addEventListener('click', startRecording);
-  $('stopBtn')?.addEventListener('click', stopRecording);
-  $('pauseBtn')?.addEventListener('click', pauseRecording);
+  const startBtn = $('startBtn');
+  const stopBtn = $('stopBtn');
+  const pauseBtn = $('pauseBtn');
+  const uploadArea = $('uploadArea');
+  const fileInput = $('fileInput');
+  const searchInput = $('searchInput');
+  const exportAllBtn = $('exportAllBtn');
+  const clearCacheBtn = $('clearCacheBtn');
+  const themeToggle = $('themeToggle');
+  if (startBtn) startBtn.addEventListener('click', startRecording);
+  if (stopBtn) stopBtn.addEventListener('click', stopRecording);
+  if (pauseBtn) pauseBtn.addEventListener('click', pauseRecording);
+  if (themeToggle) themeToggle.addEventListener('click', toggleTheme);
 
   document.querySelectorAll('.lang-option').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -43,17 +55,10 @@ function bindEvents() {
     });
   });
 
-  $('themeToggle')?.addEventListener('click', toggleTheme);
   onLangChange(() => updateLangUI());
 
-  $('uploadArea')?.addEventListener('click', () => $('fileInput')?.click());
-  $('fileInput')?.addEventListener('change', (e) => {
-    if (e.target.files[0]) handleFileUpload(e.target.files[0]);
-    e.target.value = '';
-  });
-
-  const uploadArea = $('uploadArea');
   if (uploadArea) {
+    uploadArea.addEventListener('click', () => fileInput?.click());
     uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
     uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
     uploadArea.addEventListener('drop', (e) => {
@@ -64,18 +69,43 @@ function bindEvents() {
     });
   }
 
-  $('searchInput')?.addEventListener('input', (e) => {
-    filterHistory(e.target.value || null, null, null);
-  });
+  if (fileInput) {
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files[0]) handleFileUpload(e.target.files[0]);
+      e.target.value = '';
+    });
+  }
 
-  $('exportAllBtn')?.addEventListener('click', () => exportAll('txt'));
-  $('clearCacheBtn')?.addEventListener('click', clearCache);
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      filterHistory(e.target.value || null, null, null);
+    });
+  }
+
+  if (exportAllBtn) exportAllBtn.addEventListener('click', () => exportAll('txt'));
+  if (clearCacheBtn) clearCacheBtn.addEventListener('click', clearCache);
 
   document.querySelectorAll('.model-option').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
+      const modelId = btn.dataset.model;
+      if (modelId === currentModelId) return;
+
+      if (isDownloadableModel(modelId)) {
+        const size = getDownloadSize(modelId);
+        const proceed = await showConfirmDialog(
+          getString('downloadTitle'),
+          getString('downloadConfirm').replace('{size}', size)
+        );
+        if (!proceed) return;
+        showDownloadDialog(
+          getString('downloadTitle'),
+          `正在下载 ${modelId.replace('Xenova/', '')}...`
+        );
+      }
+
       document.querySelectorAll('.model-option').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      currentModelId = btn.dataset.model;
+      currentModelId = modelId;
       localStorage.setItem('vtw-model', currentModelId);
       updateModelStatus('loading');
       loadModel(currentModelId);
@@ -84,22 +114,25 @@ function bindEvents() {
 
   document.addEventListener('keydown', handleKeyboard);
 
-  document.addEventListener('transcribe:token', (e) => {
-    appendTokenToDisplay(e.detail.token);
-  });
-
   document.addEventListener('model:loaded', () => {
+    hideDownloadDialog();
     updateModelStatus('ready');
   });
 
   document.addEventListener('model:error', (e) => {
+    hideDownloadDialog();
     console.error('Model load error:', e.detail.message);
     showToast(getString('modelLoadFailed'));
-    currentModelId = 'Xenova/whisper-base';
-    localStorage.setItem('vtw-model', currentModelId);
-    updateModelSelect();
-    updateModelStatus('loading');
-    loadModel(currentModelId);
+    if (currentModelId.includes('large-v3-turbo')) {
+      currentModelId = 'Xenova/whisper-small';
+      localStorage.setItem('vtw-model', currentModelId);
+      updateModelSelect();
+      updateModelStatus('loading');
+      showToast('Turbo 加载失败，已回退到 Small');
+      loadModel(currentModelId);
+    } else {
+      updateModelStatus('error', e.detail.message);
+    }
   });
 
   document.addEventListener('model:progress', (e) => {
@@ -107,6 +140,22 @@ function bindEvents() {
     const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
     updateModelStatus('loading', pct);
   });
+
+  document.addEventListener('model:download-progress', (e) => {
+    const { loaded, total } = e.detail;
+    downloadTotalLoaded = loaded;
+    downloadTotalSize = total;
+    const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
+    updateDownloadProgress(pct, loaded, total);
+  });
+
+  document.addEventListener('model:status', (e) => {
+    const { cached, complete } = e.detail;
+    if (cached && complete) {
+      hideDownloadDialog();
+    }
+  });
+
 }
 
 function handleKeyboard(e) {
@@ -123,7 +172,8 @@ function handleKeyboard(e) {
   }
   if (e.ctrlKey && e.key === 'f') {
     e.preventDefault();
-    $('searchInput')?.focus();
+    const el = $('searchInput');
+    if (el) el.focus();
   }
   if (e.ctrlKey && e.key === 't') {
     e.preventDefault();
@@ -132,17 +182,21 @@ function handleKeyboard(e) {
   }
 }
 
-function updateModelStatus(state, progress) {
+function updateModelStatus(state, progressOrMsg) {
   const el = $('modelStatus');
   if (!el) return;
   const isTurbo = currentModelId.includes('large-v3-turbo');
   const note = isTurbo ? ` <span class="model-turbo-note">(${getString('modelTurboNote')})</span>` : '';
   if (state === 'loading') {
-    el.innerHTML = `<span class="model-loading-icon">⏳</span> ${getString('modelLoading')}${progress != null ? ` ${progress}%` : ''}...${note}`;
+    const pct = typeof progressOrMsg === 'number' ? ` ${progressOrMsg}%` : '';
+    el.innerHTML = `<span class="model-loading-icon">⏳</span> ${getString('modelLoading')}${pct}...${note}`;
     el.className = 'model-status model-loading';
   } else if (state === 'ready') {
     el.innerHTML = `<span class="model-loading-icon">✅</span> ${getString('modelReady')}${note}`;
     el.className = 'model-status model-ready';
+  } else if (state === 'error') {
+    el.innerHTML = `<span class="model-loading-icon">❌</span> ${progressOrMsg || '加载失败'}${note}`;
+    el.className = 'model-status model-loading';
   } else {
     el.innerHTML = `<span class="model-loading-icon">⚡</span> ${getString('statusLoading')}...${note}`;
     el.className = 'model-status model-loading';
@@ -239,8 +293,15 @@ function startChunkedTranscription() {
           const start = baseTime + c.start;
           const end = baseTime + c.end;
           const text = c.text.trim();
-          if (text && !currentSegments.some(s => s.text === text && Math.abs(s.start - start) < 2)) {
-            currentSegments.push({ start, end, text });
+          if (text) {
+            const overlap = currentSegments.some(s => {
+              const timeOverlap = Math.min(end, s.end) - Math.max(start, s.start);
+              const minDuration = Math.min(end - start, s.end - s.start);
+              return minDuration > 0 && timeOverlap / minDuration > 0.5;
+            });
+            if (!overlap) {
+              currentSegments.push({ start, end, text });
+            }
           }
         });
         updateLiveDisplay();
@@ -259,10 +320,12 @@ function pauseRecording() {
   if (!isRecording) return;
   if (recorder.isPaused) {
     recorder.resume();
-    $('pauseBtn').innerHTML = '<i class="fas fa-play"></i>';
+    const btn = $('pauseBtn');
+    if (btn) btn.innerHTML = '<i class="fas fa-play"></i>';
   } else {
     recorder.pause();
-    $('pauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
+    const btn = $('pauseBtn');
+    if (btn) btn.innerHTML = '<i class="fas fa-pause"></i>';
   }
 }
 
@@ -284,23 +347,27 @@ function updateControlUI() {
   const statusBadge = $('statusBadge');
 
   if (isRecording) {
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-    pauseBtn.disabled = false;
-    if (recorder.isPaused) {
-      statusBadge.innerHTML = `<i class="fas fa-circle"></i> ${getString('statusPaused')}`;
-      statusBadge.className = 'status-badge paused';
-    } else {
-      statusBadge.innerHTML = `<i class="fas fa-circle"></i> ${getString('statusRecording')} <span class="rec-timer" id="recTimer">00:00</span>`;
-      statusBadge.className = 'status-badge recording';
-      startTimer();
+    if (startBtn) startBtn.disabled = true;
+    if (stopBtn) stopBtn.disabled = false;
+    if (pauseBtn) pauseBtn.disabled = false;
+    if (statusBadge) {
+      if (recorder.isPaused) {
+        statusBadge.innerHTML = `<i class="fas fa-circle"></i> ${getString('statusPaused')}`;
+        statusBadge.className = 'status-badge paused';
+      } else {
+        statusBadge.innerHTML = `<i class="fas fa-circle"></i> ${getString('statusRecording')} <span class="rec-timer" id="recTimer">00:00</span>`;
+        statusBadge.className = 'status-badge recording';
+        startTimer();
+      }
     }
   } else {
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-    pauseBtn.disabled = true;
-    statusBadge.innerHTML = `<i class="fas fa-circle"></i> ${getString('statusIdle')}`;
-    statusBadge.className = 'status-badge';
+    if (startBtn) startBtn.disabled = false;
+    if (stopBtn) stopBtn.disabled = true;
+    if (pauseBtn) pauseBtn.disabled = true;
+    if (statusBadge) {
+      statusBadge.innerHTML = `<i class="fas fa-circle"></i> ${getString('statusIdle')}`;
+      statusBadge.className = 'status-badge';
+    }
     stopTimer();
   }
 }
@@ -333,15 +400,6 @@ function updateLiveDisplay() {
   el.scrollTop = el.scrollHeight;
 }
 
-function appendTokenToDisplay(token) {
-  const el = $('segmentList');
-  if (!el) return;
-  const liveSeg = el.querySelector('.segment-item:last-child .segment-text');
-  if (liveSeg) {
-    liveSeg.textContent += token;
-  }
-}
-
 function updateAudioMeter(data) {
   const meter = $('audioMeter');
   if (!meter) return;
@@ -370,28 +428,29 @@ async function handleFileUpload(file) {
   const progressContainer = $('progressContainer');
   const progressFill = $('progressFill');
 
-  statusEl.innerHTML = `📁 ${file.name}`;
-  progressContainer.style.display = 'block';
-  progressFill.style.width = '10%';
+  if (statusEl) statusEl.innerHTML = `📁 ${file.name}`;
+  if (progressContainer) progressContainer.style.display = 'block';
+  if (progressFill) progressFill.style.width = '10%';
 
   try {
-    statusEl.innerHTML = '🔊 解码音频...';
-    progressFill.style.width = '30%';
+    if (statusEl) statusEl.innerHTML = '🔊 解码音频...';
+    if (progressFill) progressFill.style.width = '30%';
     const { audioData, duration } = await decodeAudioFile(file);
 
     if (audioData.length / 16000 > 300) {
-      statusEl.innerHTML = '⏳ 分块处理大文件...';
-      progressFill.style.width = '40%';
+      if (statusEl) statusEl.innerHTML = '⏳ 分块处理大文件...';
+      if (progressFill) progressFill.style.width = '40%';
       const chunks = splitAudioChunks(audioData, 30, 5);
       const allChunks = [];
       let fullText = '';
 
       for (let i = 0; i < chunks.length; i++) {
-        statusEl.innerHTML = `⏳ 处理 ${i + 1}/${chunks.length}...`;
-        progressFill.style.width = `${40 + (i / chunks.length) * 50}%`;
+        if (statusEl) statusEl.innerHTML = `⏳ 处理 ${i + 1}/${chunks.length}...`;
+        if (progressFill) progressFill.style.width = `${40 + (i / chunks.length) * 50}%`;
         const result = await transcribe(chunks[i], currentLanguage);
         if (result.chunks) {
-          const offset = i * 25;
+          const stepSec = 30 - 5;
+          const offset = i * stepSec;
           result.chunks.forEach(c => {
             allChunks.push({ start: offset + c.start, end: offset + c.end, text: c.text });
           });
@@ -413,8 +472,8 @@ async function handleFileUpload(file) {
       updateLiveDisplay();
 
     } else {
-      statusEl.innerHTML = '🤖 识别中...';
-      progressFill.style.width = '70%';
+      if (statusEl) statusEl.innerHTML = '🤖 识别中...';
+      if (progressFill) progressFill.style.width = '70%';
       const result = await transcribe(audioData, currentLanguage);
 
       const blob = new Blob([await file.arrayBuffer()], { type: file.type });
@@ -431,27 +490,33 @@ async function handleFileUpload(file) {
       updateLiveDisplay();
     }
 
-    statusEl.innerHTML = '✅ 完成';
-    progressFill.style.width = '100%';
+    if (statusEl) statusEl.innerHTML = '✅ 完成';
+    if (progressFill) progressFill.style.width = '100%';
     showToast('识别完成');
     refreshHistory();
-    setTimeout(() => { progressContainer.style.display = 'none'; }, 2000);
+    setTimeout(() => { if (progressContainer) progressContainer.style.display = 'none'; }, 2000);
 
   } catch (err) {
     console.error('识别失败:', err);
-    statusEl.innerHTML = '❌ 失败';
+    if (statusEl) statusEl.innerHTML = '❌ 失败';
     showToast('识别失败: ' + err.message);
-    progressFill.style.width = '0%';
+    if (progressFill) progressFill.style.width = '0%';
   }
 }
 
 async function clearCache() {
-  if (!confirm('确定清除缓存并刷新？')) return;
+  if (!confirm('确定清除所有缓存并刷新？这将同时清除已下载的模型文件。')) return;
+
+  try {
+    clearModelCache(currentModelId);
+  } catch {}
+
   if ('caches' in window) {
     const keys = await caches.keys();
     await Promise.all(keys.map(k => caches.delete(k)));
   }
-  indexedDB.deleteDatabase('transformers-cache');
+  try { indexedDB.deleteDatabase('transformers-cache'); } catch {}
+  try { indexedDB.deleteDatabase('vtw-model-cache'); } catch {}
   location.reload();
 }
 

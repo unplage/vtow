@@ -40,7 +40,7 @@ const STRINGS = {
     modelSmall: 'Small (高精度)',
     modelTurbo: 'Turbo (最高)',
     modelTurboNote: '需联网下载 ~800MB',
-    modelLoadFailed: '模型加载失败，已切换回 Base',
+    modelLoadFailed: '模型加载失败',
     settingsTitle: '设置',
     keyboardShortcuts: '快捷键',
     shortcutStart: 'Space - 开始/停止',
@@ -51,6 +51,9 @@ const STRINGS = {
     clearCache: '清除缓存并重试',
     offline: '当前离线模式',
     online: '在线模式',
+    downloadTitle: '⚠️ 下载模型',
+    downloadConfirm: '此模型需要联网下载 {size} 的模型文件（缓存后离线可用），是否继续？',
+    downloadProgress: '下载中...',
   },
   'en-US': {
     appTitle: 'Voice to Text · Conference',
@@ -93,7 +96,7 @@ const STRINGS = {
     modelSmall: 'Small (Accurate)',
     modelTurbo: 'Turbo (Best)',
     modelTurboNote: 'Requires downloading ~800MB',
-    modelLoadFailed: 'Load failed, switched back to Base',
+    modelLoadFailed: 'Load failed',
     settingsTitle: 'Settings',
     keyboardShortcuts: 'Shortcuts',
     shortcutStart: 'Space - Start/Stop',
@@ -104,6 +107,9 @@ const STRINGS = {
     clearCache: 'Clear cache & retry',
     offline: 'Offline mode',
     online: 'Online mode',
+    downloadTitle: '⚠️ Download Model',
+    downloadConfirm: 'This model requires downloading {size} (cached offline after download). Continue?',
+    downloadProgress: 'Downloading...',
   }
 };
 
@@ -201,3 +207,79 @@ export const MODELS = [
   { id: 'Xenova/whisper-small', labelKey: 'modelSmall', size: 'small' },
   { id: 'Xenova/whisper-large-v3-turbo', labelKey: 'modelTurbo', size: 'turbo', remote: true },
 ];
+
+export function showConfirmDialog(title, message) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('downloadModal');
+    const header = document.getElementById('downloadModalHeader');
+    const body = document.getElementById('downloadModalBody');
+    const footer = document.getElementById('downloadModalFooter');
+    const progressArea = document.getElementById('downloadProgressArea');
+    const confirmBtn = document.getElementById('downloadConfirmBtn');
+    const cancelBtn = document.getElementById('downloadCancelBtn');
+
+    if (!modal) { resolve(true); return; }
+
+    if (header) header.textContent = title || getString('downloadTitle');
+    if (body) body.innerHTML = message;
+    if (progressArea) progressArea.classList.add('hidden');
+    if (footer) footer.classList.remove('hidden');
+    modal.classList.remove('hidden');
+
+    const cleanup = () => {
+      modal.classList.add('hidden');
+      if (confirmBtn) confirmBtn.onclick = null;
+      if (cancelBtn) cancelBtn.onclick = null;
+    };
+
+    if (confirmBtn) {
+      confirmBtn.onclick = () => { cleanup(); resolve(true); };
+    }
+    if (cancelBtn) {
+      cancelBtn.onclick = () => { cleanup(); resolve(false); };
+    }
+  });
+}
+
+export function showDownloadDialog(title, message) {
+  const modal = document.getElementById('downloadModal');
+  const header = document.getElementById('downloadModalHeader');
+  const body = document.getElementById('downloadModalBody');
+  const footer = document.getElementById('downloadModalFooter');
+  const progressArea = document.getElementById('downloadProgressArea');
+  const progressFill = document.getElementById('downloadProgressFill');
+  const progressText = document.getElementById('downloadProgressText');
+
+  if (!modal) return;
+  if (header) header.textContent = title || getString('downloadTitle');
+  if (body) body.innerHTML = message || getString('downloadProgress');
+  if (footer) footer.classList.add('hidden');
+  if (progressArea) progressArea.classList.remove('hidden');
+  if (progressFill) progressFill.style.width = '0%';
+  if (progressText) progressText.textContent = getString('downloadProgress');
+  modal.classList.remove('hidden');
+}
+
+export function updateDownloadProgress(pct, loadedBytes, totalBytes) {
+  const progressFill = document.getElementById('downloadProgressFill');
+  const progressText = document.getElementById('downloadProgressText');
+  if (progressFill) progressFill.style.width = Math.min(pct, 100) + '%';
+  if (progressText) {
+    const loaded = formatBytes(loadedBytes || 0);
+    const total = formatBytes(totalBytes || 0);
+    progressText.textContent = `${loaded} / ${total} (${pct}%)`;
+  }
+}
+
+export function hideDownloadDialog() {
+  const modal = document.getElementById('downloadModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}

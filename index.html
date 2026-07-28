@@ -89,6 +89,23 @@
 
     <div id="toast"></div>
 
+    <div id="downloadModal" class="modal-overlay hidden">
+      <div class="modal-dialog">
+        <div class="modal-header" id="downloadModalHeader">⚠️ 下载模型</div>
+        <div class="modal-body" id="downloadModalBody"></div>
+        <div class="modal-progress-area hidden" id="downloadProgressArea">
+          <div class="progress-bar modal-progress-bar">
+            <div class="progress-fill" id="downloadProgressFill"></div>
+          </div>
+          <div class="progress-text" id="downloadProgressText">准备中...</div>
+        </div>
+        <div class="modal-footer" id="downloadModalFooter">
+          <button class="ctrl-btn" id="downloadCancelBtn">取消</button>
+          <button class="ctrl-btn primary" id="downloadConfirmBtn">继续下载</button>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="./js/app.js"></script>
 
     <script>

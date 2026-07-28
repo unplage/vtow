@@ -4,6 +4,21 @@ let currentModel = null;
 let msgId = 0;
 let loadFailed = false;
 
+const MODEL_DOWNLOAD_SIZES = {
+  'Xenova/whisper-large-v3-turbo': '~800MB'
+};
+
+const IS_DOWNLOADABLE = (id) =>
+  id.includes('large-v3-turbo');
+
+export function getDownloadSize(modelId) {
+  return MODEL_DOWNLOAD_SIZES[modelId] || '';
+}
+
+export function isDownloadableModel(modelId) {
+  return IS_DOWNLOADABLE(modelId);
+}
+
 export function initWorker() {
   if (worker) return;
   worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
@@ -22,8 +37,26 @@ export function initWorker() {
           detail: { loaded: msg.loaded, total: msg.total }
         }));
         break;
-      case 'stream-token':
-        document.dispatchEvent(new CustomEvent('transcribe:token', { detail: { token: msg.token } }));
+      case 'download-progress':
+        document.dispatchEvent(new CustomEvent('model:download-progress', {
+          detail: { url: msg.url, loaded: msg.loaded, total: msg.total }
+        }));
+        break;
+      case 'model-status':
+        document.dispatchEvent(new CustomEvent('model:status', {
+          detail: {
+            modelId: msg.modelId,
+            cached: msg.cached,
+            complete: msg.complete,
+            totalBytes: msg.totalBytes,
+            files: msg.files
+          }
+        }));
+        break;
+      case 'model-cache-cleared':
+        document.dispatchEvent(new CustomEvent('model:cache-cleared', {
+          detail: { modelId: msg.modelId }
+        }));
         break;
       case 'result':
         document.dispatchEvent(new CustomEvent('transcribe:result', {
@@ -93,4 +126,14 @@ export function isReady() {
 
 export function getCurrentModel() {
   return currentModel;
+}
+
+export function checkModelCache(modelId) {
+  if (!worker) return;
+  worker.postMessage({ type: 'get-model-status', modelId });
+}
+
+export function clearModelCache(modelId) {
+  if (!worker) return;
+  worker.postMessage({ type: 'clear-model-cache', modelId });
 }

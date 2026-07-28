@@ -1,0 +1,458 @@
+import { Recorder } from './recorder.js';
+import { decodeAudioFile, splitAudioChunks, validateAudioFile } from './uploader.js';
+import { initWorker, loadModel, transcribe, isReady, getCurrentModel } from './transcription.js';
+import { addRecording, getAllRecordings } from './storage.js';
+import { initHistory, refreshHistory, filterHistory, exportAll } from './history.js';
+import { getString, getLang, setLang, getTheme, setTheme, toggleTheme, initTheme, showToast, formatTime, escapeHtml, onLangChange, MODELS } from './ui.js';
+
+const recorder = new Recorder();
+let isRecording = false;
+let currentLanguage = 'zh-CN';
+let currentModelId = localStorage.getItem('vtw-model') || 'Xenova/whisper-base';
+let currentSegments = [];
+let chunkTimer = null;
+
+function $(id) { return document.getElementById(id); }
+
+function init() {
+  initTheme();
+  initWorker();
+  loadModel(currentModelId);
+  initHistory();
+  bindEvents();
+  updateModelStatus();
+  updateLangUI();
+  updateThemeUI();
+  updateModelSelect();
+  updateOnlineStatus();
+  window.addEventListener('online', updateOnlineStatus);
+  window.addEventListener('offline', updateOnlineStatus);
+}
+
+function bindEvents() {
+  $('startBtn')?.addEventListener('click', startRecording);
+  $('stopBtn')?.addEventListener('click', stopRecording);
+  $('pauseBtn')?.addEventListener('click', pauseRecording);
+
+  document.querySelectorAll('.lang-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.lang-option').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentLanguage = btn.dataset.lang;
+      setLang(currentLanguage);
+    });
+  });
+
+  $('themeToggle')?.addEventListener('click', toggleTheme);
+  onLangChange(() => updateLangUI());
+
+  $('uploadArea')?.addEventListener('click', () => $('fileInput')?.click());
+  $('fileInput')?.addEventListener('change', (e) => {
+    if (e.target.files[0]) handleFileUpload(e.target.files[0]);
+    e.target.value = '';
+  });
+
+  const uploadArea = $('uploadArea');
+  if (uploadArea) {
+    uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
+    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
+    uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) handleFileUpload(file);
+    });
+  }
+
+  $('searchInput')?.addEventListener('input', (e) => {
+    filterHistory(e.target.value || null, null, null);
+  });
+
+  $('exportAllBtn')?.addEventListener('click', () => exportAll('txt'));
+  $('clearCacheBtn')?.addEventListener('click', clearCache);
+
+  document.querySelectorAll('.model-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.model-option').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentModelId = btn.dataset.model;
+      localStorage.setItem('vtw-model', currentModelId);
+      updateModelStatus('loading');
+      loadModel(currentModelId);
+    });
+  });
+
+  document.addEventListener('keydown', handleKeyboard);
+
+  document.addEventListener('transcribe:token', (e) => {
+    appendTokenToDisplay(e.detail.token);
+  });
+
+  document.addEventListener('model:loaded', () => {
+    updateModelStatus('ready');
+  });
+
+  document.addEventListener('model:error', (e) => {
+    console.error('Model load error:', e.detail.message);
+    showToast(getString('modelLoadFailed'));
+    currentModelId = 'Xenova/whisper-base';
+    localStorage.setItem('vtw-model', currentModelId);
+    updateModelSelect();
+    updateModelStatus('loading');
+    loadModel(currentModelId);
+  });
+
+  document.addEventListener('model:progress', (e) => {
+    const { loaded, total } = e.detail;
+    const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
+    updateModelStatus('loading', pct);
+  });
+}
+
+function handleKeyboard(e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.contentEditable === 'true') return;
+
+  if (e.code === 'Space' && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    if (isRecording) stopRecording();
+    else startRecording();
+  }
+  if (e.ctrlKey && e.key === 'e') {
+    e.preventDefault();
+    exportAll('txt');
+  }
+  if (e.ctrlKey && e.key === 'f') {
+    e.preventDefault();
+    $('searchInput')?.focus();
+  }
+  if (e.ctrlKey && e.key === 't') {
+    e.preventDefault();
+    toggleTheme();
+    updateThemeUI();
+  }
+}
+
+function updateModelStatus(state, progress) {
+  const el = $('modelStatus');
+  if (!el) return;
+  const isTurbo = currentModelId.includes('large-v3-turbo');
+  const note = isTurbo ? ` <span class="model-turbo-note">(${getString('modelTurboNote')})</span>` : '';
+  if (state === 'loading') {
+    el.innerHTML = `<span class="model-loading-icon">⏳</span> ${getString('modelLoading')}${progress != null ? ` ${progress}%` : ''}...${note}`;
+    el.className = 'model-status model-loading';
+  } else if (state === 'ready') {
+    el.innerHTML = `<span class="model-loading-icon">✅</span> ${getString('modelReady')}${note}`;
+    el.className = 'model-status model-ready';
+  } else {
+    el.innerHTML = `<span class="model-loading-icon">⚡</span> ${getString('statusLoading')}...${note}`;
+    el.className = 'model-status model-loading';
+  }
+}
+
+function updateLangUI() {
+  document.querySelectorAll('.lang-option').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.lang === currentLanguage);
+  });
+}
+
+function updateThemeUI() {
+  const btn = $('themeToggle');
+  if (btn) btn.textContent = getTheme() === 'dark' ? '☀️' : '🌙';
+}
+
+function updateModelSelect() {
+  document.querySelectorAll('.model-option').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.model === currentModelId);
+  });
+}
+
+function updateOnlineStatus() {
+  const el = $('onlineStatus');
+  if (el) {
+    el.textContent = navigator.onLine ? getString('online') : getString('offline');
+    el.className = navigator.onLine ? 'online-indicator' : 'online-indicator offline';
+  }
+}
+
+async function startRecording() {
+  if (isRecording) return;
+
+  if (!isReady()) {
+    showToast('模型尚未就绪，请稍候');
+    return;
+  }
+
+  currentSegments = [];
+
+  recorder.onStop = async (blob) => {
+    if (currentSegments.length > 0) {
+      const fullText = currentSegments.map(s => s.text).join(' ').trim();
+      try {
+        await addRecording({
+          audioBlob: blob,
+          transcript: fullText || '（无语音识别文本）',
+          language: currentLanguage,
+          source: 'mic',
+          segments: currentSegments,
+          model: currentModelId
+        });
+        showToast('已保存到历史记录');
+        refreshHistory();
+      } catch (err) {
+        console.error('保存失败:', err);
+        showToast('保存失败');
+      }
+    }
+    isRecording = false;
+    updateControlUI();
+  };
+
+  recorder.onAnalyser = (data) => updateAudioMeter(data);
+
+  try {
+    await recorder.start();
+    isRecording = true;
+    updateControlUI();
+    startChunkedTranscription();
+  } catch (err) {
+    showToast(err.message);
+  }
+}
+
+function startChunkedTranscription() {
+  const CHUNK_MS = 5000;
+  let lastChunkTime = Date.now();
+
+  chunkTimer = setInterval(async () => {
+    if (!isRecording || recorder.isPaused) return;
+
+    const blob = recorder.getBlob();
+    if (blob.size < 1000) return;
+
+    try {
+      const { audioData, duration } = await decodeAudioFile(blob);
+      const result = await transcribe(audioData, currentLanguage);
+
+      if (result.chunks && result.chunks.length) {
+        const baseTime = Date.now() / 1000 - duration;
+        result.chunks.forEach(c => {
+          const start = baseTime + c.start;
+          const end = baseTime + c.end;
+          const text = c.text.trim();
+          if (text && !currentSegments.some(s => s.text === text && Math.abs(s.start - start) < 2)) {
+            currentSegments.push({ start, end, text });
+          }
+        });
+        updateLiveDisplay();
+      } else if (result.text && result.text.trim()) {
+        const now = Date.now() / 1000;
+        currentSegments.push({ start: now - 5, end: now, text: result.text.trim() });
+        updateLiveDisplay();
+      }
+    } catch (err) {
+      console.warn('实时转写失败:', err);
+    }
+  }, CHUNK_MS);
+}
+
+function pauseRecording() {
+  if (!isRecording) return;
+  if (recorder.isPaused) {
+    recorder.resume();
+    $('pauseBtn').innerHTML = '<i class="fas fa-play"></i>';
+  } else {
+    recorder.pause();
+    $('pauseBtn').innerHTML = '<i class="fas fa-pause"></i>';
+  }
+}
+
+function stopRecording() {
+  if (!isRecording) return;
+  if (chunkTimer) {
+    clearInterval(chunkTimer);
+    chunkTimer = null;
+  }
+  recorder.stop();
+  isRecording = false;
+  updateControlUI();
+}
+
+function updateControlUI() {
+  const startBtn = $('startBtn');
+  const stopBtn = $('stopBtn');
+  const pauseBtn = $('pauseBtn');
+  const statusBadge = $('statusBadge');
+
+  if (isRecording) {
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    pauseBtn.disabled = false;
+    if (recorder.isPaused) {
+      statusBadge.innerHTML = `<i class="fas fa-circle"></i> ${getString('statusPaused')}`;
+      statusBadge.className = 'status-badge paused';
+    } else {
+      statusBadge.innerHTML = `<i class="fas fa-circle"></i> ${getString('statusRecording')} <span class="rec-timer" id="recTimer">00:00</span>`;
+      statusBadge.className = 'status-badge recording';
+      startTimer();
+    }
+  } else {
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    pauseBtn.disabled = true;
+    statusBadge.innerHTML = `<i class="fas fa-circle"></i> ${getString('statusIdle')}`;
+    statusBadge.className = 'status-badge';
+    stopTimer();
+  }
+}
+
+let timerInterval;
+function startTimer() {
+  stopTimer();
+  timerInterval = setInterval(() => {
+    const timerEl = $('recTimer');
+    if (timerEl) timerEl.textContent = formatTime(recorder.getElapsed());
+  }, 500);
+}
+function stopTimer() {
+  if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+}
+
+function updateLiveDisplay() {
+  const el = $('segmentList');
+  if (!el) return;
+  if (currentSegments.length === 0) {
+    el.innerHTML = '<div class="live-placeholder">点击开始，对着麦克风说话...</div>';
+    return;
+  }
+  el.innerHTML = currentSegments.map(s =>
+    `<div class="segment-item">
+      <span class="segment-time">${formatTime(s.start)}–${formatTime(s.end)}</span>
+      <span class="segment-text">${escapeHtml(s.text)}</span>
+    </div>`
+  ).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+function appendTokenToDisplay(token) {
+  const el = $('segmentList');
+  if (!el) return;
+  const liveSeg = el.querySelector('.segment-item:last-child .segment-text');
+  if (liveSeg) {
+    liveSeg.textContent += token;
+  }
+}
+
+function updateAudioMeter(data) {
+  const meter = $('audioMeter');
+  if (!meter) return;
+  const bars = meter.querySelectorAll('.audio-bar');
+  const step = Math.floor(data.length / bars.length);
+  bars.forEach((bar, i) => {
+    const value = data[i * step] || 0;
+    const height = Math.max(3, (value / 255) * 24);
+    bar.style.height = height + 'px';
+  });
+}
+
+async function handleFileUpload(file) {
+  const validation = validateAudioFile(file);
+  if (!validation.valid) {
+    showToast(validation.error);
+    return;
+  }
+
+  if (!isReady()) {
+    showToast('模型尚未就绪，请稍候');
+    return;
+  }
+
+  const statusEl = $('modelStatus');
+  const progressContainer = $('progressContainer');
+  const progressFill = $('progressFill');
+
+  statusEl.innerHTML = `📁 ${file.name}`;
+  progressContainer.style.display = 'block';
+  progressFill.style.width = '10%';
+
+  try {
+    statusEl.innerHTML = '🔊 解码音频...';
+    progressFill.style.width = '30%';
+    const { audioData, duration } = await decodeAudioFile(file);
+
+    if (audioData.length / 16000 > 300) {
+      statusEl.innerHTML = '⏳ 分块处理大文件...';
+      progressFill.style.width = '40%';
+      const chunks = splitAudioChunks(audioData, 30, 5);
+      const allChunks = [];
+      let fullText = '';
+
+      for (let i = 0; i < chunks.length; i++) {
+        statusEl.innerHTML = `⏳ 处理 ${i + 1}/${chunks.length}...`;
+        progressFill.style.width = `${40 + (i / chunks.length) * 50}%`;
+        const result = await transcribe(chunks[i], currentLanguage);
+        if (result.chunks) {
+          const offset = i * 25;
+          result.chunks.forEach(c => {
+            allChunks.push({ start: offset + c.start, end: offset + c.end, text: c.text });
+          });
+        }
+        fullText += result.text + ' ';
+      }
+
+      const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+      await addRecording({
+        audioBlob: blob,
+        transcript: fullText.trim(),
+        language: currentLanguage,
+        source: 'upload',
+        segments: allChunks,
+        model: currentModelId
+      });
+
+      currentSegments = allChunks;
+      updateLiveDisplay();
+
+    } else {
+      statusEl.innerHTML = '🤖 识别中...';
+      progressFill.style.width = '70%';
+      const result = await transcribe(audioData, currentLanguage);
+
+      const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+      await addRecording({
+        audioBlob: blob,
+        transcript: result.text,
+        language: currentLanguage,
+        source: 'upload',
+        segments: result.chunks || [{ start: 0, end: duration, text: result.text }],
+        model: currentModelId
+      });
+
+      currentSegments = result.chunks || [{ start: 0, end: duration, text: result.text }];
+      updateLiveDisplay();
+    }
+
+    statusEl.innerHTML = '✅ 完成';
+    progressFill.style.width = '100%';
+    showToast('识别完成');
+    refreshHistory();
+    setTimeout(() => { progressContainer.style.display = 'none'; }, 2000);
+
+  } catch (err) {
+    console.error('识别失败:', err);
+    statusEl.innerHTML = '❌ 失败';
+    showToast('识别失败: ' + err.message);
+    progressFill.style.width = '0%';
+  }
+}
+
+async function clearCache() {
+  if (!confirm('确定清除缓存并刷新？')) return;
+  if ('caches' in window) {
+    const keys = await caches.keys();
+    await Promise.all(keys.map(k => caches.delete(k)));
+  }
+  indexedDB.deleteDatabase('transformers-cache');
+  location.reload();
+}
+
+document.addEventListener('DOMContentLoaded', init);

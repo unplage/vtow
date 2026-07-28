@@ -142,10 +142,14 @@ function bindEvents() {
   });
 
   document.addEventListener('model:download-progress', (e) => {
+    const modal = document.getElementById('downloadModal');
     const { loaded, total } = e.detail;
     downloadTotalLoaded = loaded;
     downloadTotalSize = total;
     const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
+    if (modal?.classList.contains('hidden') && loaded < total) {
+      showDownloadDialog(getString('downloadTitle'), `${currentModelId.replace('Xenova/', '')} ${getString('downloadProgress')}`);
+    }
     updateDownloadProgress(pct, loaded, total);
   });
 

@@ -13,7 +13,6 @@ export class Recorder {
     this.onAnalyser = null;
     this._chunkInterval = null;
     this._analyserInterval = null;
-    this._stopped = false;
     this._onStopCalled = false;
   }
 
@@ -36,7 +35,6 @@ export class Recorder {
     this.audioChunks = [];
     this.isRecording = true;
     this.isPaused = false;
-    this._stopped = false;
     this.recordingStartTime = Date.now();
 
     try {

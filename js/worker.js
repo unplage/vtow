@@ -6,7 +6,7 @@ const _cacheQueue = [];
 
 function _initCacheDb() {
   if (_cacheDbReady) return Promise.resolve();
-  if (_cacheQueue.length > 0 || _cacheDb) {
+  if (_cacheQueue.length > 0) {
     return new Promise((resolve) => _cacheQueue.push(resolve));
   }
   return new Promise((resolve, reject) => {
@@ -177,7 +177,10 @@ function configureEnv() {
   const downloadable = isDownloadable(modelId);
   env.allowRemoteModels = downloadable;
   env.allowLocalModels = !downloadable;
-  if (!downloadable) env.localModelPath = './models/';
+  if (!downloadable) {
+    const modelsDir = self.location.pathname.replace(/\/js\/[^/]+$/, '/models/');
+    env.localModelPath = modelsDir;
+  }
   env.backends = ['wasm'];
 }
 

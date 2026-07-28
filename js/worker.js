@@ -72,7 +72,7 @@ function _mimeFromUrl(url) {
 
 globalThis.fetch = async function (input, init) {
   const urlStr = (typeof input === 'string' ? input : (input instanceof Request ? input.url : null));
-  if (!urlStr || !urlStr.includes('huggingface.co') || !urlStr.includes('/resolve/')) {
+  if (!urlStr || (!urlStr.includes('huggingface.co') && !urlStr.endsWith('.onnx'))) {
     return __originalFetch(input, init);
   }
 

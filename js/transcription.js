@@ -25,12 +25,15 @@ export function isDownloadableModel(modelId) {
 function detectWorkerCount() {
   const cores = navigator.hardwareConcurrency || 2;
   const mem = navigator.deviceMemory;
+  let count;
   if (mem !== undefined) {
-    if (mem < 2) return 1;
-    if (mem < 4) return Math.min(2, cores - 1, 2);
-    return Math.min(cores - 1, Math.floor(mem / 2), 4);
+    if (mem < 2) count = 1;
+    else if (mem < 4) count = Math.min(2, cores - 1, 2);
+    else count = Math.min(cores - 1, Math.floor(mem / 2), 4);
+  } else {
+    count = Math.min(cores - 1, 2);
   }
-  return Math.min(cores - 1, 2);
+  return Math.max(1, count);
 }
 
 export function getWorkerCount() {
@@ -49,6 +52,7 @@ export function loadModel(modelId) {
 
   pool.loadModel(modelId).then(() => {
     workerReady = true;
+    pool.setReady();
     document.dispatchEvent(new CustomEvent('model:loaded'));
   }).catch((err) => {
     loadFailed = true;

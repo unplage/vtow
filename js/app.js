@@ -287,6 +287,7 @@ function startChunkedTranscription() {
 
   chunkTimer = setInterval(async () => {
     if (!isRecording || recorder.isPaused) return;
+    if (!isReady()) return;
 
     const blob = recorder.getAndClearNewChunks();
     if (blob.size < 1000) return;

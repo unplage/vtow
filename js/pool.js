@@ -8,10 +8,14 @@ export class WorkerPool {
     this.busy = [];
     this.taskQueue = [];
     this.msgId = 0;
+    this._loading = true;
     for (let i = 0; i < count; i++) {
       const w = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
       this.workers.push(w);
       this.busy.push(false);
+      w.addEventListener('error', () => {
+        this._rejectAll(`Worker error`);
+      });
     }
     this._attachForwarding();
   }
@@ -45,6 +49,7 @@ export class WorkerPool {
   }
 
   loadModel(modelId) {
+    this._loading = true;
     return Promise.all(this.workers.map((w) => {
       return new Promise((resolve, reject) => {
         const handler = (e) => {
@@ -66,11 +71,12 @@ export class WorkerPool {
   }
 
   _getNextWorker() {
-    const idx = this.busy.indexOf(false);
-    return idx;
+    if (this.workers.length === 0) return -1;
+    return this.busy.indexOf(false);
   }
 
   _processQueue() {
+    if (this._loading) return;
     while (this.taskQueue.length > 0) {
       const idx = this._getNextWorker();
       if (idx === -1) break;
@@ -89,10 +95,21 @@ export class WorkerPool {
     }
   }
 
+  _rejectAll(msg) {
+    const q = this.taskQueue.splice(0);
+    q.forEach(t => t.reject(new Error(msg)));
+  }
+
+  setReady() {
+    this._loading = false;
+    this._processQueue();
+  }
+
   destroy() {
     this.workers.forEach(w => w.terminate());
     this.workers = [];
     this.busy = [];
     this.taskQueue = [];
+    this._loading = true;
   }
 }

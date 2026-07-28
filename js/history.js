@@ -243,7 +243,7 @@ function downloadFile(name, content, type) {
   a.href = URL.createObjectURL(blob);
   a.download = name;
   a.click();
-  URL.revokeObjectURL(blob);
+  URL.revokeObjectURL(a.href);
 }
 
 export async function exportAll(format = 'txt') {

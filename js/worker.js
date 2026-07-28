@@ -156,6 +156,8 @@ let asrPipeline = null;
 
 const CDN_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5/+esm';
 const CDN_FALLBACK = 'https://unpkg.com/@huggingface/transformers@3.7.5/+esm';
+const ORT_WASM_CDN = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.3/dist/';
+const ORT_WASM_FALLBACK = 'https://unpkg.com/onnxruntime-web@1.17.3/dist/';
 
 async function loadLibrary() {
   try {
@@ -181,7 +183,9 @@ function configureEnv() {
     const modelsDir = self.location.pathname.replace(/\/js\/[^/]+$/, '/models/');
     env.localModelPath = modelsDir;
   }
-  env.backends = ['wasm'];
+  env.backends.onnx = env.backends.onnx || {};
+  env.backends.onnx.wasm = env.backends.onnx.wasm || {};
+  env.backends.onnx.wasm.wasmPaths = ORT_WASM_CDN;
 }
 
 async function loadModel() {
@@ -199,7 +203,16 @@ async function loadModel() {
     }
   };
   if (!downloadable) opts.local_files_only = true;
-  asrPipeline = await createPipeline('automatic-speech-recognition', modelId, opts);
+  try {
+    asrPipeline = await createPipeline('automatic-speech-recognition', modelId, opts);
+  } catch (e) {
+    if (env.backends.onnx?.wasm?.wasmPaths === ORT_WASM_CDN) {
+      env.backends.onnx.wasm.wasmPaths = ORT_WASM_FALLBACK;
+      asrPipeline = await createPipeline('automatic-speech-recognition', modelId, opts);
+    } else {
+      throw e;
+    }
+  }
   return asrPipeline;
 }
 

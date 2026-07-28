@@ -1,6 +1,6 @@
 import { Recorder } from './recorder.js';
-import { decodeAudioFile, splitAudioChunks, validateAudioFile } from './uploader.js';
-import { initWorker, loadModel, transcribe, isReady, getCurrentModel, isDownloadableModel, getDownloadSize, checkModelCache, clearModelCache } from './transcription.js';
+import { decodeAudioFile, getSharedAudioContext, splitAudioChunks, validateAudioFile } from './uploader.js';
+import { loadModel, transcribe, isReady, getCurrentModel, isDownloadableModel, getDownloadSize, checkModelCache, clearModelCache, initWorker, getWorkerCount } from './transcription.js';
 import { addRecording, getAllRecordings } from './storage.js';
 import { initHistory, refreshHistory, filterHistory, exportAll } from './history.js';
 import { getString, getLang, setLang, getTheme, setTheme, toggleTheme, initTheme, showToast, formatTime, escapeHtml, onLangChange, MODELS, showConfirmDialog, showDownloadDialog, hideDownloadDialog, updateDownloadProgress } from './ui.js';
@@ -193,12 +193,14 @@ function updateModelStatus(state, progressOrMsg) {
   const isSmall = currentModelId.includes('whisper-small');
   const note = isTurbo ? ` <span class="model-turbo-note">(${getString('modelTurboNote')})</span>` :
     isSmall ? ` <span class="model-turbo-note">(${getString('modelSmallNote')})</span>` : '';
+  const wc = getWorkerCount();
+  const wcNote = wc > 1 ? ` <span class="model-turbo-note">(${wc} Workers)</span>` : '';
   if (state === 'loading') {
     const pct = typeof progressOrMsg === 'number' ? ` ${progressOrMsg}%` : '';
-    el.innerHTML = `<span class="model-loading-icon">⏳</span> ${getString('modelLoading')}${pct}...${note}`;
+    el.innerHTML = `<span class="model-loading-icon">⏳</span> ${getString('modelLoading')}${pct}...${note}${wcNote}`;
     el.className = 'model-status model-loading';
   } else if (state === 'ready') {
-    el.innerHTML = `<span class="model-loading-icon">✅</span> ${getString('modelReady')}${note}`;
+    el.innerHTML = `<span class="model-loading-icon">✅</span> ${getString('modelReady')}${note}${wcNote}`;
     el.className = 'model-status model-ready';
   } else if (state === 'error') {
     el.innerHTML = `<span class="model-loading-icon">❌</span> ${progressOrMsg || '加载失败'}${note}`;
@@ -271,6 +273,7 @@ async function startRecording() {
 
   try {
     await recorder.start();
+    recorder.resetChunkIndex();
     isRecording = true;
     updateControlUI();
     startChunkedTranscription();
@@ -280,17 +283,28 @@ async function startRecording() {
 }
 
 function startChunkedTranscription() {
-  const CHUNK_MS = 5000;
-  let lastChunkTime = Date.now();
+  const CHUNK_MS = 3000;
 
   chunkTimer = setInterval(async () => {
     if (!isRecording || recorder.isPaused) return;
 
-    const blob = recorder.getBlob();
+    const blob = recorder.getAndClearNewChunks();
     if (blob.size < 1000) return;
 
     try {
-      const { audioData, duration } = await decodeAudioFile(blob);
+      const ctx = getSharedAudioContext();
+      const arrayBuffer = await blob.arrayBuffer();
+      const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+      const targetSr = 16000;
+      const duration = audioBuffer.duration;
+      const offlineCtx = new OfflineAudioContext(1, Math.ceil(duration * targetSr), targetSr);
+      const source = offlineCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(offlineCtx.destination);
+      source.start();
+      const rendered = await offlineCtx.startRendering();
+      const audioData = rendered.getChannelData(0);
+
       const result = await transcribe(audioData, currentLanguage);
 
       if (result.chunks && result.chunks.length) {
@@ -313,7 +327,7 @@ function startChunkedTranscription() {
         updateLiveDisplay();
       } else if (result.text && result.text.trim()) {
         const now = Date.now() / 1000;
-        currentSegments.push({ start: now - 5, end: now, text: result.text.trim() });
+        currentSegments.push({ start: now - 3, end: now, text: result.text.trim() });
         updateLiveDisplay();
       }
     } catch (err) {
@@ -324,15 +338,15 @@ function startChunkedTranscription() {
 
 function pauseRecording() {
   if (!isRecording) return;
+  const btn = $('pauseBtn');
   if (recorder.isPaused) {
     recorder.resume();
-    const btn = $('pauseBtn');
-    if (btn) btn.innerHTML = '<i class="fas fa-play"></i>';
+    if (btn) btn.innerHTML = '<i class="fas fa-pause"></i>';
   } else {
     recorder.pause();
-    const btn = $('pauseBtn');
-    if (btn) btn.innerHTML = '<i class="fas fa-pause"></i>';
+    if (btn) btn.innerHTML = '<i class="fas fa-play"></i>';
   }
+  updateControlUI();
 }
 
 function stopRecording() {

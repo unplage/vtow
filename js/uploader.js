@@ -1,3 +1,10 @@
+let _sharedCtx = null;
+
+export function getSharedAudioContext() {
+  if (!_sharedCtx) _sharedCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return _sharedCtx;
+}
+
 export async function decodeAudioFile(file) {
   const arrayBuffer = await file.arrayBuffer();
   const audioContext = new (window.AudioContext || window.webkitAudioContext)();

@@ -1,8 +1,10 @@
-let worker = null;
+import { WorkerPool } from './pool.js';
+
+let pool = null;
 let workerReady = false;
 let currentModel = null;
-let msgId = 0;
 let loadFailed = false;
+let _workerCount = 1;
 
 const MODEL_DOWNLOAD_SIZES = {
   'Xenova/whisper-small': '~250MB',
@@ -20,100 +22,49 @@ export function isDownloadableModel(modelId) {
   return IS_DOWNLOADABLE(modelId);
 }
 
-export function initWorker() {
-  if (worker) return;
-  worker = new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
-  worker.addEventListener('message', (e) => {
-    const msg = e.data;
-    switch (msg.type) {
-      case 'loaded':
-        workerReady = true;
-        document.dispatchEvent(new CustomEvent('model:loaded'));
-        break;
-      case 'model-ready':
-        document.dispatchEvent(new CustomEvent('model:ready', { detail: { progress: 100 } }));
-        break;
-      case 'model-progress':
-        document.dispatchEvent(new CustomEvent('model:progress', {
-          detail: { loaded: msg.loaded, total: msg.total }
-        }));
-        break;
-      case 'download-progress':
-        document.dispatchEvent(new CustomEvent('model:download-progress', {
-          detail: { url: msg.url, loaded: msg.loaded, total: msg.total }
-        }));
-        break;
-      case 'model-status':
-        document.dispatchEvent(new CustomEvent('model:status', {
-          detail: {
-            modelId: msg.modelId,
-            cached: msg.cached,
-            complete: msg.complete,
-            totalBytes: msg.totalBytes,
-            files: msg.files
-          }
-        }));
-        break;
-      case 'model-cache-cleared':
-        document.dispatchEvent(new CustomEvent('model:cache-cleared', {
-          detail: { modelId: msg.modelId }
-        }));
-        break;
-      case 'result':
-        document.dispatchEvent(new CustomEvent('transcribe:result', {
-          detail: { text: msg.text, chunks: msg.chunks, id: msg.id }
-        }));
-        break;
-      case 'error':
-        if (!msg.id) loadFailed = true;
-        document.dispatchEvent(new CustomEvent(msg.id ? 'transcribe:error' : 'model:error', {
-          detail: { message: msg.message, id: msg.id }
-        }));
-        break;
-      case 'model-set':
-        document.dispatchEvent(new CustomEvent('model:changed', { detail: { modelId: msg.modelId } }));
-        break;
-    }
-  });
-  worker.addEventListener('error', (err) => {
-    console.error('Worker error:', err);
-    document.dispatchEvent(new CustomEvent('transcribe:error', { detail: { message: err.message } }));
-  });
+function detectWorkerCount() {
+  const cores = navigator.hardwareConcurrency || 2;
+  const mem = navigator.deviceMemory;
+  if (mem !== undefined) {
+    if (mem < 2) return 1;
+    if (mem < 4) return Math.min(2, cores - 1, 2);
+    return Math.min(cores - 1, Math.floor(mem / 2), 4);
+  }
+  return Math.min(cores - 1, 2);
 }
 
+export function getWorkerCount() {
+  return _workerCount;
+}
+
+export function initWorker() {}
+
 export function loadModel(modelId) {
-  if (!worker) initWorker();
+  if (pool) { pool.destroy(); pool = null; }
+  _workerCount = detectWorkerCount();
   currentModel = modelId;
   workerReady = false;
   loadFailed = false;
-  worker.postMessage({ type: 'load', modelId });
+  pool = new WorkerPool(_workerCount, modelId);
+
+  pool.loadModel(modelId).then(() => {
+    workerReady = true;
+    document.dispatchEvent(new CustomEvent('model:loaded'));
+  }).catch((err) => {
+    loadFailed = true;
+    document.dispatchEvent(new CustomEvent('model:error', {
+      detail: { message: err.message || '模型加载失败' }
+    }));
+  });
 }
 
 export function isLoadFailed() {
   return loadFailed;
 }
 
-export function transcribe(audioData, language, options = {}) {
-  const id = ++msgId;
-  return new Promise((resolve, reject) => {
-    const onResult = (e) => {
-      if (e.detail.id === id) {
-        document.removeEventListener('transcribe:result', onResult);
-        document.removeEventListener('transcribe:error', onError);
-        resolve({ text: e.detail.text, chunks: e.detail.chunks });
-      }
-    };
-    const onError = (e) => {
-      if (e.detail.id === id) {
-        document.removeEventListener('transcribe:result', onResult);
-        document.removeEventListener('transcribe:error', onError);
-        reject(new Error(e.detail.message));
-      }
-    };
-    document.addEventListener('transcribe:result', onResult);
-    document.addEventListener('transcribe:error', onError);
-    worker.postMessage({ type: 'transcribe', audioData, language, id });
-  });
+export async function transcribe(audioData, language) {
+  if (!pool) throw new Error('模型未加载');
+  return pool.transcribe(audioData, language);
 }
 
 export function setModel(modelId) {
@@ -130,11 +81,11 @@ export function getCurrentModel() {
 }
 
 export function checkModelCache(modelId) {
-  if (!worker) return;
-  worker.postMessage({ type: 'get-model-status', modelId });
+  if (!pool || !pool.workers.length) return;
+  pool.workers[0].postMessage({ type: 'get-model-status', modelId });
 }
 
 export function clearModelCache(modelId) {
-  if (!worker) return;
-  worker.postMessage({ type: 'clear-model-cache', modelId });
+  if (!pool || !pool.workers.length) return;
+  pool.workers[0].postMessage({ type: 'clear-model-cache', modelId });
 }

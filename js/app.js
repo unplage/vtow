@@ -19,9 +19,9 @@ function $(id) { return document.getElementById(id); }
 function init() {
   initTheme();
   initWorker();
-  loadModel(currentModelId);
   initHistory();
   bindEvents();
+  loadModel(currentModelId);
   updateModelStatus();
   updateLangUI();
   updateThemeUI();
@@ -147,7 +147,7 @@ function bindEvents() {
     downloadTotalLoaded = loaded;
     downloadTotalSize = total;
     const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
-    if (modal?.classList.contains('hidden') && loaded < total) {
+    if (isDownloadableModel(currentModelId) && modal?.classList.contains('hidden') && loaded < total) {
       showDownloadDialog(getString('downloadTitle'), `${currentModelId.replace('Xenova/', '')} ${getString('downloadProgress')}`);
     }
     updateDownloadProgress(pct, loaded, total);

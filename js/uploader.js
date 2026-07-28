@@ -1,21 +1,23 @@
 export async function decodeAudioFile(file) {
   const arrayBuffer = await file.arrayBuffer();
   const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+  try {
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
-  const targetSr = 16000;
-  const duration = audioBuffer.duration;
-  const offlineCtx = new OfflineAudioContext(1, Math.ceil(duration * targetSr), targetSr);
-  const source = offlineCtx.createBufferSource();
-  source.buffer = audioBuffer;
-  source.connect(offlineCtx.destination);
-  source.start();
-  const rendered = await offlineCtx.startRendering();
-  const audioData = rendered.getChannelData(0);
+    const targetSr = 16000;
+    const duration = audioBuffer.duration;
+    const offlineCtx = new OfflineAudioContext(1, Math.ceil(duration * targetSr), targetSr);
+    const source = offlineCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(offlineCtx.destination);
+    source.start();
+    const rendered = await offlineCtx.startRendering();
+    const audioData = rendered.getChannelData(0);
 
-  await audioContext.close();
-
-  return { audioData, duration };
+    return { audioData, duration };
+  } finally {
+    audioContext.close().catch(() => {});
+  }
 }
 
 export function splitAudioChunks(audioData, chunkDurationSec = 30, overlapSec = 5) {

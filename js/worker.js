@@ -153,6 +153,7 @@ let createPipeline = null;
 let env = null;
 let modelId = 'Xenova/whisper-base';
 let asrPipeline = null;
+let _loadToken = 0;
 
 const CDN_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5/+esm';
 const CDN_FALLBACK = 'https://unpkg.com/@huggingface/transformers@3.7.5/+esm';
@@ -183,9 +184,13 @@ function configureEnv() {
     const modelsDir = self.location.pathname.replace(/\/js\/[^/]+$/, '/models/');
     env.localModelPath = modelsDir;
   }
-  env.backends.onnx = env.backends.onnx || {};
-  env.backends.onnx.wasm = env.backends.onnx.wasm || {};
-  env.backends.onnx.wasm.wasmPaths = ORT_WASM_CDN;
+  env.backends = {
+    onnx: {
+      wasm: {
+        wasmPaths: ORT_WASM_CDN
+      }
+    }
+  };
 }
 
 async function loadModel() {
@@ -206,8 +211,8 @@ async function loadModel() {
   try {
     asrPipeline = await createPipeline('automatic-speech-recognition', modelId, opts);
   } catch (e) {
-    if (env.backends.onnx?.wasm?.wasmPaths === ORT_WASM_CDN) {
-      env.backends.onnx.wasm.wasmPaths = ORT_WASM_FALLBACK;
+    if (ORT_WASM_CDN) {
+      env.backends = { onnx: { wasm: { wasmPaths: ORT_WASM_FALLBACK } } };
       asrPipeline = await createPipeline('automatic-speech-recognition', modelId, opts);
     } else {
       throw e;
@@ -260,10 +265,13 @@ self.addEventListener('message', async (e) => {
   switch (msg.type) {
     case 'load':
       modelId = msg.modelId || modelId;
+      const token = ++_loadToken;
       try {
         await loadModel();
+        if (_loadToken !== token) return;
         self.postMessage({ type: 'loaded' });
       } catch (err) {
+        if (_loadToken !== token) return;
         self.postMessage({ type: 'error', message: err.message });
       }
       break;

@@ -27,6 +27,22 @@ export async function decodeAudioFile(file) {
   }
 }
 
+export async function decodeAudioFileShared(blob) {
+  const arrayBuffer = await blob.arrayBuffer();
+  const ctx = getSharedAudioContext();
+  const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+  const targetSr = 16000;
+  const duration = audioBuffer.duration;
+  const offlineCtx = new OfflineAudioContext(1, Math.ceil(duration * targetSr), targetSr);
+  const source = offlineCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(offlineCtx.destination);
+  source.start();
+  const rendered = await offlineCtx.startRendering();
+  const audioData = rendered.getChannelData(0);
+  return { audioData, duration };
+}
+
 export function splitAudioChunks(audioData, chunkDurationSec = 30, overlapSec = 5) {
   const sampleRate = 16000;
   const chunkSize = chunkDurationSec * sampleRate;

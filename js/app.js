@@ -1,5 +1,5 @@
 import { Recorder } from './recorder.js';
-import { decodeAudioFile, getSharedAudioContext, splitAudioChunks, validateAudioFile } from './uploader.js';
+import { decodeAudioFile, decodeAudioFileShared, getSharedAudioContext, splitAudioChunks, validateAudioFile } from './uploader.js';
 import { initWorker, loadModel, transcribe, isReady, getCurrentModel, isDownloadableModel, getDownloadSize, checkModelCache, clearModelCache } from './transcription.js';
 import { addRecording, getAllRecordings } from './storage.js';
 import { initHistory, refreshHistory, filterHistory, exportAll } from './history.js';
@@ -8,7 +8,7 @@ import { getString, getLang, setLang, getTheme, setTheme, toggleTheme, initTheme
 const recorder = new Recorder();
 let isRecording = false;
 let currentLanguage = localStorage.getItem('vtw-lang') || 'auto';
-let currentModelId = localStorage.getItem('vtw-model') || 'Xenova/whisper-base';
+let currentModelId = localStorage.getItem('vtw-model') || 'Xenova/whisper-tiny';
 let currentSegments = [];
 let chunkTimer = null;
 let downloadTotalLoaded = 0;
@@ -281,7 +281,7 @@ async function startRecording() {
 }
 
 function startChunkedTranscription() {
-  const CHUNK_MS = 3000;
+  const CHUNK_MS = 5000;
 
   chunkTimer = setInterval(async () => {
     if (!isRecording || recorder.isPaused) return;
@@ -291,7 +291,7 @@ function startChunkedTranscription() {
     if (blob.size < 1000) return;
 
     try {
-      const { audioData, duration } = await decodeAudioFile(blob);
+      const { audioData, duration } = await decodeAudioFileShared(blob);
       const result = await transcribe(audioData, currentLanguage);
 
       if (result.chunks && result.chunks.length) {

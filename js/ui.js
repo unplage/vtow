@@ -135,7 +135,7 @@ export function getLang() {
 export function setLang(lang) {
   currentLang = lang;
   localStorage.setItem('vtw-lang', lang);
-  document.documentElement.lang = lang === 'en-US' ? 'en' : 'zh-CN';
+  document.documentElement.lang = lang === 'en-US' ? 'en' : lang === 'zh-CN' ? 'zh-CN' : '';
   listeners.forEach(fn => fn(lang));
 }
 

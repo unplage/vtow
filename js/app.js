@@ -7,7 +7,7 @@ import { getString, getLang, setLang, getTheme, setTheme, toggleTheme, initTheme
 
 const recorder = new Recorder();
 let isRecording = false;
-let currentLanguage = 'zh-CN';
+let currentLanguage = localStorage.getItem('vtw-lang') || 'auto';
 let currentModelId = localStorage.getItem('vtw-model') || 'Xenova/whisper-base';
 let currentSegments = [];
 let chunkTimer = null;

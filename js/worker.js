@@ -222,7 +222,7 @@ async function loadModel() {
 }
 
 async function transcribeAudio(audioData, language) {
-  const lang = language === 'zh-CN' ? 'zh' : language === 'en-US' ? 'en' : null;
+  const lang = language === 'auto' ? null : language === 'zh-CN' ? 'zh' : language === 'en-US' ? 'en' : null;
   const result = await asrPipeline(audioData, {
     language: lang,
     task: 'transcribe',

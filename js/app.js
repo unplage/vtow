@@ -190,7 +190,9 @@ function updateModelStatus(state, progressOrMsg) {
   const el = $('modelStatus');
   if (!el) return;
   const isTurbo = currentModelId.includes('large-v3-turbo');
-  const note = isTurbo ? ` <span class="model-turbo-note">(${getString('modelTurboNote')})</span>` : '';
+  const isSmall = currentModelId.includes('whisper-small');
+  const note = isTurbo ? ` <span class="model-turbo-note">(${getString('modelTurboNote')})</span>` :
+    isSmall ? ` <span class="model-turbo-note">(${getString('modelSmallNote')})</span>` : '';
   if (state === 'loading') {
     const pct = typeof progressOrMsg === 'number' ? ` ${progressOrMsg}%` : '';
     el.innerHTML = `<span class="model-loading-icon">⏳</span> ${getString('modelLoading')}${pct}...${note}`;

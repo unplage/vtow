@@ -172,7 +172,7 @@ async function loadLibrary() {
 }
 
 function isDownloadable(id) {
-  return id.includes('large-v3-turbo');
+  return id.includes('whisper-small') || id.includes('large-v3-turbo');
 }
 
 function configureEnv() {

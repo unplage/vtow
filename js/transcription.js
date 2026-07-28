@@ -5,11 +5,12 @@ let msgId = 0;
 let loadFailed = false;
 
 const MODEL_DOWNLOAD_SIZES = {
+  'Xenova/whisper-small': '~250MB',
   'Xenova/whisper-large-v3-turbo': '~800MB'
 };
 
 const IS_DOWNLOADABLE = (id) =>
-  id.includes('large-v3-turbo');
+  id.includes('whisper-small') || id.includes('large-v3-turbo');
 
 export function getDownloadSize(modelId) {
   return MODEL_DOWNLOAD_SIZES[modelId] || '';

@@ -17,6 +17,7 @@ let isTranscribing = false;
 let recordingStartTime = 0;
 let lastChunkAudioData = null;
 let lastChunkEndTime = 0;
+let totalDecodedSamples = 0;
 const OVERLAP_SEC = 2;
 let lastRenderedCount = 0;
 let currentMode = localStorage.getItem('vtw-mode') || 'local';
@@ -396,6 +397,7 @@ async function startRecording() {
     recordingStartTime = Date.now() / 1000;
     lastChunkAudioData = null;
     lastChunkEndTime = 0;
+    totalDecodedSamples = 0;
     lastRenderedCount = 0;
     updateControlUI();
     startChunkedTranscription();
@@ -423,7 +425,7 @@ function startChunkedTranscription() {
     if (currentMode === 'cloud' && !isCloudReady()) return;
     if (isTranscribing) return;
 
-    const blob = recorder.getAndClearNewChunks();
+    const blob = recorder.getAllChunksBlob();
     if (blob.size < 1000) return;
 
     isTranscribing = true;
@@ -431,34 +433,36 @@ function startChunkedTranscription() {
     try {
       const { audioData, duration } = await decodeAudioFileShared(blob);
 
-      const rms = computeRMS(audioData);
+      const newAudioData = audioData.slice(totalDecodedSamples);
+      const newDuration = newAudioData.length / 16000;
+      totalDecodedSamples = audioData.length;
+
+      if (newAudioData.length === 0) return;
+
+      const rms = computeRMS(newAudioData);
       if (rms < 0.005) {
-        recorder.acknowledgeChunks();
-        lastChunkEndTime += duration;
+        lastChunkEndTime += newDuration;
         const keepSamples = OVERLAP_SEC * 16000;
-        lastChunkAudioData = audioData.slice(-keepSamples);
+        lastChunkAudioData = newAudioData.slice(-keepSamples);
         return;
       }
 
       let audioToTranscribe;
-      const overlapSamples = OVERLAP_SEC * 16000;
       if (lastChunkAudioData && lastChunkEndTime > 0) {
-        audioToTranscribe = new Float32Array(lastChunkAudioData.length + audioData.length);
+        audioToTranscribe = new Float32Array(lastChunkAudioData.length + newAudioData.length);
         audioToTranscribe.set(lastChunkAudioData, 0);
-        audioToTranscribe.set(audioData, lastChunkAudioData.length);
+        audioToTranscribe.set(newAudioData, lastChunkAudioData.length);
       } else {
-        audioToTranscribe = new Float32Array(audioData);
+        audioToTranscribe = new Float32Array(newAudioData);
       }
 
       const keepSamples = OVERLAP_SEC * 16000;
-      lastChunkAudioData = audioData.slice(-keepSamples);
+      lastChunkAudioData = newAudioData.slice(-keepSamples);
 
       const transcribeOpts = currentMode === 'cloud'
         ? { cloudMode: true, apiKey: mimoApiKey }
         : {};
       const result = await transcribe(audioToTranscribe, currentLanguage, transcribeOpts);
-
-      recorder.acknowledgeChunks();
 
       const baseTime = lastChunkEndTime > 0
         ? Math.max(0, lastChunkEndTime - OVERLAP_SEC)
@@ -483,12 +487,12 @@ function startChunkedTranscription() {
         updateLiveDisplay();
       } else if (result.text && result.text.trim()) {
         const start = lastChunkEndTime;
-        const end = lastChunkEndTime + duration;
+        const end = lastChunkEndTime + newDuration;
         currentSegments.push({ start, end, text: result.text.trim() });
         updateLiveDisplay();
       }
 
-      lastChunkEndTime += duration;
+      lastChunkEndTime += newDuration;
     } catch (err) {
       console.warn('实时转写失败:', err);
       showToast('转写失败: ' + err.message);

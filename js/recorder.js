@@ -14,7 +14,6 @@ export class Recorder {
     this._chunkInterval = null;
     this._analyserInterval = null;
     this._onStopCalled = false;
-    this._lastTranscribedIndex = 0;
   }
 
   async start() {
@@ -36,7 +35,6 @@ export class Recorder {
     this.audioChunks = [];
     this.isRecording = true;
     this.isPaused = false;
-    this._lastTranscribedIndex = 0;
     this.recordingStartTime = Date.now();
 
     try {
@@ -139,20 +137,11 @@ export class Recorder {
     return new Blob(this.audioChunks, { type: 'audio/webm' });
   }
 
-  getAndClearNewChunks() {
-    const chunks = this.audioChunks.slice(this._lastTranscribedIndex);
-    this._lastTranscribedIndex = this.audioChunks.length;
-    return new Blob(chunks, { type: 'audio/webm' });
-  }
-
-  acknowledgeChunks() {
-    if (this._lastTranscribedIndex > 0) {
-      this.audioChunks.splice(0, this._lastTranscribedIndex);
-      this._lastTranscribedIndex = 0;
-    }
+  getAllChunksBlob() {
+    return new Blob(this.audioChunks, { type: 'audio/webm' });
   }
 
   resetChunkIndex() {
-    this._lastTranscribedIndex = 0;
+    // No-op: all chunks are kept, decoded on demand
   }
 }

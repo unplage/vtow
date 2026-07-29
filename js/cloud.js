@@ -1,5 +1,5 @@
 const MIMO_API_URL = 'https://api.xiaomimimo.com/v1/chat/completions';
-const MIMO_MODEL = 'mimo-v2.5-asr';
+const MIMO_MODEL = 'MiMo-V2.5-ASR';
 const CLOUD_TIMEOUT = 60000;
 
 function floatToWavBase64(audioData, sampleRate = 16000) {
@@ -36,9 +36,10 @@ function floatToWavBase64(audioData, sampleRate = 16000) {
   }
 
   const bytes = new Uint8Array(buffer);
+  const CHUNK_SIZE = 8192;
   let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK_SIZE));
   }
   return btoa(binary);
 }
@@ -65,8 +66,7 @@ export async function transcribeCloud(audioData, language, apiKey, options = {})
         type: 'input_audio',
         input_audio: { data: `data:audio/wav;base64,${wavBase64}` }
       }]
-    }],
-    asr_options: { language: asrLang }
+    }]
   };
 
   const controller = new AbortController();
@@ -77,7 +77,7 @@ export async function transcribeCloud(audioData, language, apiKey, options = {})
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'api-key': apiKey
+        'Authorization': `Bearer ${apiKey}`
       },
       body: JSON.stringify(body),
       signal: controller.signal

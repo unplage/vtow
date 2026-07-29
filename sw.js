@@ -1,5 +1,5 @@
 const BASE_PATH = self.location.pathname.replace(/[^/]+$/, '');
-const CACHE_NAME = `pwa-cache${BASE_PATH.replace(/\//g, '-')}v18`;
+const CACHE_NAME = `pwa-cache${BASE_PATH.replace(/\//g, '-')}v19`;
 
 const PRECACHE_URLS = [
   BASE_PATH,
@@ -14,6 +14,7 @@ const PRECACHE_URLS = [
   `${BASE_PATH}js/storage.js`,
   `${BASE_PATH}js/history.js`,
   `${BASE_PATH}js/ui.js`,
+  `${BASE_PATH}js/cloud.js`,
 ];
 
 const STATIC_EXTENSIONS = ['js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'woff', 'woff2', 'ttf', 'eot', 'ico'];

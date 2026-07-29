@@ -407,6 +407,16 @@ async function startRecording() {
 function startChunkedTranscription() {
   const CHUNK_MS = 5000;
 
+  function updateTranscriptionStatus(transcribing) {
+    const statusBadge = $('statusBadge');
+    if (!statusBadge || !isRecording) return;
+    if (transcribing) {
+      statusBadge.innerHTML = `<i class="fas fa-circle recording"></i> ${getString('statusRecording')} <span class="rec-timer" id="recTimer">00:00</span> · <span style="color:#f59e0b">转写中...</span>`;
+    } else {
+      statusBadge.innerHTML = `<i class="fas fa-circle"></i> ${getString('statusRecording')} <span class="rec-timer" id="recTimer">00:00</span>`;
+    }
+  }
+
   chunkTimer = setInterval(async () => {
     if (!isRecording || recorder.isPaused) return;
     if (currentMode === 'local' && !isReady()) return;
@@ -417,6 +427,7 @@ function startChunkedTranscription() {
     if (blob.size < 1000) return;
 
     isTranscribing = true;
+    updateTranscriptionStatus(true);
     try {
       const { audioData, duration } = await decodeAudioFileShared(blob);
 
@@ -480,8 +491,10 @@ function startChunkedTranscription() {
       lastChunkEndTime += duration;
     } catch (err) {
       console.warn('实时转写失败:', err);
+      showToast('转写失败: ' + err.message);
     } finally {
       isTranscribing = false;
+      updateTranscriptionStatus(false);
     }
   }, CHUNK_MS);
 }

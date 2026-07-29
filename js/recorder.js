@@ -141,6 +141,7 @@ export class Recorder {
 
   getAndClearNewChunks() {
     const chunks = this.audioChunks.slice(this._lastTranscribedIndex);
+    this._lastTranscribedIndex = this.audioChunks.length;
     return new Blob(chunks, { type: 'audio/webm' });
   }
 

@@ -19,6 +19,8 @@ let lastChunkAudioData = null;
 let lastChunkEndTime = 0;
 const OVERLAP_SEC = 2;
 let lastRenderedCount = 0;
+let currentMode = localStorage.getItem('vtw-mode') || 'local';
+let mimoApiKey = localStorage.getItem('vtw-mimo-key') || '';
 
 function $(id) { return document.getElementById(id); }
 
@@ -44,16 +46,20 @@ function initAudioMeter() {
 
 function init() {
   initTheme();
-  initWorker();
+  if (currentMode === 'local') {
+    initWorker();
+    loadModel(currentModelId);
+  }
   initHistory();
   bindEvents();
   initAudioMeter();
-  loadModel(currentModelId);
   updateModelStatus();
   updateLangUI();
   updateThemeUI();
   updateModelSelect();
   updateOnlineStatus();
+  updateModeUI();
+  updateApiKeyUI();
   window.addEventListener('online', updateOnlineStatus);
   window.addEventListener('offline', updateOnlineStatus);
 }
@@ -68,10 +74,47 @@ function bindEvents() {
   const exportAllBtn = $('exportAllBtn');
   const clearCacheBtn = $('clearCacheBtn');
   const themeToggle = $('themeToggle');
+  const saveApiKeyBtn = $('saveApiKeyBtn');
+  const apiKeyInput = $('apiKeyInput');
   if (startBtn) startBtn.addEventListener('click', startRecording);
   if (stopBtn) stopBtn.addEventListener('click', stopRecording);
   if (pauseBtn) pauseBtn.addEventListener('click', pauseRecording);
   if (themeToggle) themeToggle.addEventListener('click', toggleTheme);
+
+  document.querySelectorAll('.mode-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.mode;
+      if (mode === currentMode) return;
+      if (mode === 'cloud' && !mimoApiKey) {
+        showToast(getString('apiKeyRequired'));
+        return;
+      }
+      document.querySelectorAll('.mode-option').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentMode = mode;
+      localStorage.setItem('vtw-mode', currentMode);
+      updateModeUI();
+      if (currentMode === 'local') {
+        if (!isReady()) {
+          updateModelStatus('loading');
+          loadModel(currentModelId);
+        }
+      }
+    });
+  });
+
+  if (saveApiKeyBtn && apiKeyInput) {
+    saveApiKeyBtn.addEventListener('click', () => {
+      const key = apiKeyInput.value.trim();
+      if (!key) return;
+      mimoApiKey = key;
+      localStorage.setItem('vtw-mimo-key', mimoApiKey);
+      showToast(getString('apiKeySaved'));
+    });
+    apiKeyInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') saveApiKeyBtn.click();
+    });
+  }
 
   document.querySelectorAll('.lang-option').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -117,6 +160,22 @@ function bindEvents() {
       const modelId = btn.dataset.model;
       if (modelId === currentModelId) return;
 
+      if (modelId === 'mimo-v2.5-asr') {
+        if (!mimoApiKey) {
+          showToast(getString('apiKeyRequired'));
+          return;
+        }
+        document.querySelectorAll('.model-option').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentModelId = modelId;
+        currentMode = 'cloud';
+        localStorage.setItem('vtw-model', currentModelId);
+        localStorage.setItem('vtw-mode', currentMode);
+        updateModeUI();
+        updateModelStatus('ready');
+        return;
+      }
+
       if (isDownloadableModel(modelId)) {
         const size = getDownloadSize(modelId);
         const proceed = await showConfirmDialog(
@@ -133,7 +192,10 @@ function bindEvents() {
       document.querySelectorAll('.model-option').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentModelId = modelId;
+      currentMode = 'local';
       localStorage.setItem('vtw-model', currentModelId);
+      localStorage.setItem('vtw-mode', currentMode);
+      updateModeUI();
       updateModelStatus('loading');
       loadModel(currentModelId);
     });
@@ -216,10 +278,19 @@ function handleKeyboard(e) {
 function updateModelStatus(state, progressOrMsg) {
   const el = $('modelStatus');
   if (!el) return;
+
+  if (currentMode === 'cloud') {
+    el.innerHTML = `<span class="model-loading-icon">☁️</span> MiMo Cloud · ${mimoApiKey ? '✅ 已配置' : '❌ 需要 API Key'}`;
+    el.className = 'model-status model-ready';
+    return;
+  }
+
   const isTurbo = currentModelId.includes('large-v3-turbo');
   const isSmall = currentModelId.includes('whisper-small');
+  const isMiMo = currentModelId.includes('mimo-v2.5');
   const note = isTurbo ? ` <span class="model-turbo-note">(${getString('modelTurboNote')})</span>` :
-    isSmall ? ` <span class="model-turbo-note">(${getString('modelSmallNote')})</span>` : '';
+    isSmall ? ` <span class="model-turbo-note">(${getString('modelSmallNote')})</span>` :
+    isMiMo ? ` <span class="model-turbo-note">(${getString('modelMiMoNote')})</span>` : '';
   if (state === 'loading') {
     const pct = typeof progressOrMsg === 'number' ? ` ${progressOrMsg}%` : '';
     el.innerHTML = `<span class="model-loading-icon">⏳</span> ${getString('modelLoading')}${pct}...${note}`;
@@ -253,6 +324,22 @@ function updateModelSelect() {
   });
 }
 
+function updateModeUI() {
+  document.querySelectorAll('.mode-option').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.mode === currentMode);
+  });
+  const apiKeySection = $('apiKeySection');
+  if (apiKeySection) {
+    apiKeySection.classList.toggle('hidden', currentMode !== 'cloud');
+  }
+  updateModelStatus();
+}
+
+function updateApiKeyUI() {
+  const input = $('apiKeyInput');
+  if (input) input.value = mimoApiKey;
+}
+
 function updateOnlineStatus() {
   const el = $('onlineStatus');
   if (el) {
@@ -261,11 +348,19 @@ function updateOnlineStatus() {
   }
 }
 
+function isCloudReady() {
+  return currentMode === 'cloud' && !!mimoApiKey;
+}
+
 async function startRecording() {
   if (isRecording) return;
 
-  if (!isReady()) {
+  if (currentMode === 'local' && !isReady()) {
     showToast('模型尚未就绪，请稍候');
+    return;
+  }
+  if (currentMode === 'cloud' && !isCloudReady()) {
+    showToast(getString('apiKeyRequired'));
     return;
   }
 
@@ -316,7 +411,8 @@ function startChunkedTranscription() {
 
   chunkTimer = setInterval(async () => {
     if (!isRecording || recorder.isPaused) return;
-    if (!isReady()) return;
+    if (currentMode === 'local' && !isReady()) return;
+    if (currentMode === 'cloud' && !isCloudReady()) return;
     if (isTranscribing) return;
 
     const blob = recorder.getAndClearNewChunks();
@@ -348,7 +444,10 @@ function startChunkedTranscription() {
       const keepSamples = OVERLAP_SEC * 16000;
       lastChunkAudioData = audioData.slice(-keepSamples);
 
-      const result = await transcribe(audioToTranscribe, currentLanguage);
+      const transcribeOpts = currentMode === 'cloud'
+        ? { cloudMode: true, apiKey: mimoApiKey }
+        : {};
+      const result = await transcribe(audioToTranscribe, currentLanguage, transcribeOpts);
 
       recorder.acknowledgeChunks();
 
@@ -509,14 +608,22 @@ async function handleFileUpload(file) {
     return;
   }
 
-  if (!isReady()) {
+  if (currentMode === 'local' && !isReady()) {
     showToast('模型尚未就绪，请稍候');
+    return;
+  }
+  if (currentMode === 'cloud' && !isCloudReady()) {
+    showToast(getString('apiKeyRequired'));
     return;
   }
 
   const statusEl = $('modelStatus');
   const progressContainer = $('progressContainer');
   const progressFill = $('progressFill');
+
+  const transcribeOpts = currentMode === 'cloud'
+    ? { cloudMode: true, apiKey: mimoApiKey }
+    : {};
 
   if (statusEl) statusEl.innerHTML = `📁 ${file.name}`;
   if (progressContainer) progressContainer.style.display = 'block';
@@ -537,7 +644,7 @@ async function handleFileUpload(file) {
       for (let i = 0; i < chunks.length; i++) {
         if (statusEl) statusEl.innerHTML = `⏳ 处理 ${i + 1}/${chunks.length}...`;
         if (progressFill) progressFill.style.width = `${40 + (i / chunks.length) * 50}%`;
-        const result = await transcribe(chunks[i], currentLanguage);
+        const result = await transcribe(chunks[i], currentLanguage, transcribeOpts);
         if (result.chunks) {
           const stepSec = 30 - 5;
           const offset = i * stepSec;
@@ -564,7 +671,7 @@ async function handleFileUpload(file) {
     } else {
       if (statusEl) statusEl.innerHTML = '🤖 识别中...';
       if (progressFill) progressFill.style.width = '70%';
-      const result = await transcribe(audioData, currentLanguage);
+      const result = await transcribe(audioData, currentLanguage, transcribeOpts);
 
       const blob = new Blob([await file.arrayBuffer()], { type: file.type });
       await addRecording({

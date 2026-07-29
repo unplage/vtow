@@ -1,3 +1,5 @@
+import { transcribeCloud } from './cloud.js';
+
 let worker = null;
 let workerReady = false;
 let currentModel = null;
@@ -94,6 +96,10 @@ export function isLoadFailed() {
 }
 
 export function transcribe(audioData, language, options = {}) {
+  if (options.cloudMode && options.apiKey) {
+    return transcribeCloud(audioData, language, options.apiKey, { timeout: options.timeout });
+  }
+
   const id = ++msgId;
   const timeout = options.timeout || 30000;
 

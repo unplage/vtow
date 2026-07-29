@@ -1,5 +1,5 @@
 const BASE_PATH = self.location.pathname.replace(/[^/]+$/, '');
-const CACHE_NAME = `pwa-cache${BASE_PATH.replace(/\//g, '-')}v16`;
+const CACHE_NAME = `pwa-cache${BASE_PATH.replace(/\//g, '-')}v17`;
 
 const PRECACHE_URLS = [
   BASE_PATH,

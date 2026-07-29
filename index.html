@@ -46,11 +46,21 @@
         </div>
 
         <!-- Model selector -->
+        <div class="mode-switch" id="modeSwitch">
+            <button class="mode-option active" data-mode="local">🏠 <span data-i18n="modeLocal">本地</span></button>
+            <button class="mode-option" data-mode="cloud">☁️ <span data-i18n="modeCloud">云端</span></button>
+        </div>
+        <div class="api-key-section hidden" id="apiKeySection">
+            <input type="password" id="apiKeyInput" class="api-key-input" placeholder="sk-xxxxx (MiMo API Key)">
+            <button class="api-key-save-btn" id="saveApiKeyBtn">保存</button>
+        </div>
+
         <div class="model-selector" id="modelSelector">
             <button class="model-option active" data-model="Xenova/whisper-tiny">Tiny</button>
             <button class="model-option" data-model="Xenova/whisper-base">Base</button>
             <button class="model-option" data-model="Xenova/whisper-small">Small</button>
             <button class="model-option" data-model="Xenova/whisper-large-v3-turbo">Turbo</button>
+            <button class="model-option" data-model="mimo-v2.5-asr">MiMo ☁️</button>
         </div>
         <div class="model-status" id="modelStatus">⚡ <span data-i18n="modelLoading">模型加载中</span>...</div>
 

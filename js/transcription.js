@@ -95,25 +95,44 @@ export function isLoadFailed() {
 
 export function transcribe(audioData, language, options = {}) {
   const id = ++msgId;
+  const timeout = options.timeout || 30000;
+
   return new Promise((resolve, reject) => {
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      clearTimeout(timer);
+      document.removeEventListener('transcribe:result', onResult);
+      document.removeEventListener('transcribe:error', onError);
+    };
+
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('转写超时'));
+    }, timeout);
+
     const onResult = (e) => {
       if (e.detail.id === id) {
-        document.removeEventListener('transcribe:result', onResult);
-        document.removeEventListener('transcribe:error', onError);
+        cleanup();
         resolve({ text: e.detail.text, chunks: e.detail.chunks });
       }
     };
     const onError = (e) => {
       if (e.detail.id === id) {
-        document.removeEventListener('transcribe:result', onResult);
-        document.removeEventListener('transcribe:error', onError);
+        cleanup();
         reject(new Error(e.detail.message));
       }
     };
+
     document.addEventListener('transcribe:result', onResult);
     document.addEventListener('transcribe:error', onError);
-    worker.postMessage({ type: 'transcribe', audioData, language, id });
+    worker.postMessage({ type: 'transcribe', audioData, language, id }, [audioData.buffer]);
   });
+}
+
+export function abortTranscription(id) {
+  if (worker) worker.postMessage({ type: 'cancel', id: id || 0 });
 }
 
 export function setModel(modelId) {

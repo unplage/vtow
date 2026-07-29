@@ -190,6 +190,22 @@ function toSimplified(text) {
   return _t2sConverter ? _t2sConverter(text) : text;
 }
 
+function filterHallucinations(text) {
+  if (!text) return text;
+  return text.replace(/(.{2,})\1{2,}/g, '$1');
+}
+
+function restorePunctuation(text, lang) {
+  if (!text || !text.trim()) return text;
+  text = text.trim();
+  if (lang === 'zh-CN' || lang === 'zh' || lang === null) {
+    if (!/[。！？，、；：…]$/.test(text)) text += '。';
+  } else if (lang === 'en-US' || lang === 'en') {
+    if (!/[.!?,;:…]$/.test(text)) text += '.';
+  }
+  return text;
+}
+
 function isDownloadable(id) {
   return id.includes('whisper-small') || id.includes('large-v3-turbo');
 }
@@ -285,11 +301,11 @@ async function _processTranscribeQueue() {
   const msg = _transcribeQueue.shift();
   try {
     const result = await transcribeAudio(msg.audioData, msg.language);
-    const text = toSimplified(result.text);
+    const text = toSimplified(filterHallucinations(restorePunctuation(result.text, msg.language)));
     const chunks = (result.chunks || []).map(c => ({
       start: c.timestamp[0],
       end: c.timestamp[1],
-      text: toSimplified(c.text)
+      text: toSimplified(filterHallucinations(restorePunctuation(c.text, msg.language)))
     }));
     self.postMessage({ type: 'result', text, chunks, id: msg.id });
   } catch (err) {
@@ -319,6 +335,14 @@ self.addEventListener('message', async (e) => {
     case 'transcribe':
       _transcribeQueue.push(msg);
       _processTranscribeQueue();
+      break;
+
+    case 'cancel':
+      if (msg.id) {
+        _transcribeQueue = _transcribeQueue.filter(m => m.id !== msg.id);
+      } else {
+        _transcribeQueue = [];
+      }
       break;
 
     case 'set-model':

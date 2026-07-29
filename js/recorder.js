@@ -145,10 +145,13 @@ export class Recorder {
   }
 
   acknowledgeChunks() {
-    this._lastTranscribedIndex = this.audioChunks.length;
+    if (this._lastTranscribedIndex > 0) {
+      this.audioChunks.splice(0, this._lastTranscribedIndex);
+      this._lastTranscribedIndex = 0;
+    }
   }
 
   resetChunkIndex() {
-    this._lastTranscribedIndex = this.audioChunks.length;
+    this._lastTranscribedIndex = 0;
   }
 }

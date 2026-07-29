@@ -1,6 +1,6 @@
 import { Recorder } from './recorder.js';
 import { decodeAudioFile, decodeAudioFileShared, getSharedAudioContext, splitAudioChunks, validateAudioFile } from './uploader.js';
-import { initWorker, loadModel, transcribe, isReady, getCurrentModel, isDownloadableModel, getDownloadSize, checkModelCache, clearModelCache } from './transcription.js';
+import { initWorker, loadModel, transcribe, isReady, getCurrentModel, isDownloadableModel, getDownloadSize, checkModelCache, clearModelCache, abortTranscription } from './transcription.js';
 import { addRecording, getAllRecordings } from './storage.js';
 import { initHistory, refreshHistory, filterHistory, exportAll } from './history.js';
 import { getString, getLang, setLang, getTheme, setTheme, toggleTheme, initTheme, showToast, formatTime, escapeHtml, onLangChange, MODELS, showConfirmDialog, showDownloadDialog, hideDownloadDialog, updateDownloadProgress } from './ui.js';
@@ -15,8 +15,20 @@ let downloadTotalLoaded = 0;
 let downloadTotalSize = 0;
 let isTranscribing = false;
 let recordingStartTime = 0;
+let lastChunkAudioData = null;
+let lastChunkEndTime = 0;
+const OVERLAP_SEC = 2;
+let lastRenderedCount = 0;
 
 function $(id) { return document.getElementById(id); }
+
+function computeRMS(audioData) {
+  let sum = 0;
+  for (let i = 0; i < audioData.length; i++) {
+    sum += audioData[i] * audioData[i];
+  }
+  return Math.sqrt(sum / audioData.length);
+}
 
 function initAudioMeter() {
   const meter = $('audioMeter');
@@ -289,6 +301,9 @@ async function startRecording() {
     recorder.resetChunkIndex();
     isRecording = true;
     recordingStartTime = Date.now() / 1000;
+    lastChunkAudioData = null;
+    lastChunkEndTime = 0;
+    lastRenderedCount = 0;
     updateControlUI();
     startChunkedTranscription();
   } catch (err) {
@@ -310,34 +325,62 @@ function startChunkedTranscription() {
     isTranscribing = true;
     try {
       const { audioData, duration } = await decodeAudioFileShared(blob);
-      const result = await transcribe(audioData, currentLanguage);
+
+      const rms = computeRMS(audioData);
+      if (rms < 0.005) {
+        recorder.acknowledgeChunks();
+        lastChunkEndTime += duration;
+        const keepSamples = OVERLAP_SEC * 16000;
+        lastChunkAudioData = audioData.slice(-keepSamples);
+        return;
+      }
+
+      let audioToTranscribe;
+      const overlapSamples = OVERLAP_SEC * 16000;
+      if (lastChunkAudioData && lastChunkEndTime > 0) {
+        audioToTranscribe = new Float32Array(lastChunkAudioData.length + audioData.length);
+        audioToTranscribe.set(lastChunkAudioData, 0);
+        audioToTranscribe.set(audioData, lastChunkAudioData.length);
+      } else {
+        audioToTranscribe = new Float32Array(audioData);
+      }
+
+      const keepSamples = OVERLAP_SEC * 16000;
+      lastChunkAudioData = audioData.slice(-keepSamples);
+
+      const result = await transcribe(audioToTranscribe, currentLanguage);
 
       recorder.acknowledgeChunks();
 
+      const baseTime = lastChunkEndTime > 0
+        ? Math.max(0, lastChunkEndTime - OVERLAP_SEC)
+        : 0;
+
       if (result.chunks && result.chunks.length) {
-        const elapsed = Date.now() / 1000 - recordingStartTime;
-        const baseTime = Math.max(0, elapsed - duration);
         result.chunks.forEach(c => {
           const start = baseTime + c.start;
           const end = baseTime + c.end;
           const text = c.text.trim();
-          if (text) {
-            const overlap = currentSegments.some(s => {
-              const timeOverlap = Math.min(end, s.end) - Math.max(start, s.start);
-              const minDuration = Math.min(end - start, s.end - s.start);
-              return minDuration > 0 && timeOverlap / minDuration > 0.5;
-            });
-            if (!overlap) {
-              currentSegments.push({ start, end, text });
-            }
+          if (!text) return;
+          if (start < lastChunkEndTime) return;
+          const isDupe = currentSegments.some(s => {
+            const timeOverlap = Math.min(end, s.end) - Math.max(start, s.start);
+            const minDur = Math.min(end - start, s.end - s.start);
+            return minDur > 0 && timeOverlap / minDur > 0.5;
+          });
+          if (!isDupe) {
+            currentSegments.push({ start, end, text });
           }
         });
         updateLiveDisplay();
       } else if (result.text && result.text.trim()) {
-        const elapsed = Date.now() / 1000 - recordingStartTime;
-        currentSegments.push({ start: Math.max(0, elapsed - 3), end: elapsed, text: result.text.trim() });
+        const start = lastChunkEndTime;
+        const end = lastChunkEndTime + duration;
+        currentSegments.push({ start, end, text: result.text.trim() });
         updateLiveDisplay();
       }
+
+      lastChunkEndTime += duration;
     } catch (err) {
       console.warn('实时转写失败:', err);
     } finally {
@@ -366,6 +409,7 @@ function stopRecording() {
     chunkTimer = null;
   }
   isTranscribing = false;
+  abortTranscription();
   recorder.stop();
   isRecording = false;
   updateControlUI();
@@ -424,14 +468,25 @@ function updateLiveDisplay() {
   if (!el) return;
   if (currentSegments.length === 0) {
     el.innerHTML = '<div class="live-placeholder">点击开始，对着麦克风说话...</div>';
+    lastRenderedCount = 0;
     return;
   }
-  el.innerHTML = currentSegments.map(s =>
-    `<div class="segment-item">
-      <span class="segment-time">${formatTime(s.start)}–${formatTime(s.end)}</span>
-      <span class="segment-text">${escapeHtml(s.text)}</span>
-    </div>`
-  ).join('');
+
+  const placeholder = el.querySelector('.live-placeholder');
+  if (placeholder) placeholder.remove();
+
+  const newSegs = currentSegments.slice(lastRenderedCount);
+  if (newSegs.length === 0) return;
+
+  const frag = document.createDocumentFragment();
+  newSegs.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'segment-item';
+    div.innerHTML = `<span class="segment-time">${formatTime(s.start)}–${formatTime(s.end)}</span><span class="segment-text">${escapeHtml(s.text)}</span>`;
+    frag.appendChild(div);
+  });
+  el.appendChild(frag);
+  lastRenderedCount = currentSegments.length;
   el.scrollTop = el.scrollHeight;
 }
 

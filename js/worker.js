@@ -156,11 +156,13 @@ let asrPipeline = null;
 let _loadToken = 0;
 let _transcribeQueue = [];
 let _transcribing = false;
+let _t2sConverter = null;
 
 const CDN_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5/+esm';
 const CDN_FALLBACK = 'https://unpkg.com/@huggingface/transformers@3.7.5/+esm';
 const ORT_WASM_CDN = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.3/dist/';
 const ORT_WASM_FALLBACK = 'https://unpkg.com/onnxruntime-web@1.17.3/dist/';
+const OPENCC_CDN = 'https://cdn.jsdelivr.net/npm/opencc-js@1.4.1/dist/esm/full.js';
 
 async function loadLibrary() {
   try {
@@ -172,6 +174,20 @@ async function loadLibrary() {
     createPipeline = mod.pipeline;
     env = mod.env;
   }
+}
+
+async function loadOpenCC() {
+  if (_t2sConverter) return;
+  try {
+    const OpenCC = await import(OPENCC_CDN);
+    _t2sConverter = OpenCC.Converter({ from: 'tw', to: 'cn' });
+  } catch (e) {
+    console.warn('OpenCC 加载失败，跳过繁简转换:', e);
+  }
+}
+
+function toSimplified(text) {
+  return _t2sConverter ? _t2sConverter(text) : text;
 }
 
 function isDownloadable(id) {
@@ -197,6 +213,7 @@ function configureEnv() {
 
 async function loadModel() {
   await loadLibrary();
+  await loadOpenCC();
   configureEnv();
   const downloadable = isDownloadable(modelId);
   const opts = {
@@ -268,16 +285,13 @@ async function _processTranscribeQueue() {
   const msg = _transcribeQueue.shift();
   try {
     const result = await transcribeAudio(msg.audioData, msg.language);
-    self.postMessage({
-      type: 'result',
-      text: result.text,
-      chunks: (result.chunks || []).map(c => ({
-        start: c.timestamp[0],
-        end: c.timestamp[1],
-        text: c.text
-      })),
-      id: msg.id
-    });
+    const text = toSimplified(result.text);
+    const chunks = (result.chunks || []).map(c => ({
+      start: c.timestamp[0],
+      end: c.timestamp[1],
+      text: toSimplified(c.text)
+    }));
+    self.postMessage({ type: 'result', text, chunks, id: msg.id });
   } catch (err) {
     self.postMessage({ type: 'error', message: err.message, id: msg.id });
   } finally {

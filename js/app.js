@@ -15,10 +15,8 @@ let downloadTotalLoaded = 0;
 let downloadTotalSize = 0;
 let isTranscribing = false;
 let recordingStartTime = 0;
-let lastChunkAudioData = null;
 let lastChunkEndTime = 0;
 let totalDecodedSamples = 0;
-const OVERLAP_SEC = 2;
 let lastRenderedCount = 0;
 let currentMode = localStorage.getItem('vtw-mode') || 'local';
 let mimoApiKey = localStorage.getItem('vtw-mimo-key') || '';
@@ -395,7 +393,6 @@ async function startRecording() {
     recorder.resetChunkIndex();
     isRecording = true;
     recordingStartTime = Date.now() / 1000;
-    lastChunkAudioData = null;
     lastChunkEndTime = 0;
     totalDecodedSamples = 0;
     lastRenderedCount = 0;
@@ -407,7 +404,7 @@ async function startRecording() {
 }
 
 function startChunkedTranscription() {
-  const CHUNK_MS = 5000;
+  const CHUNK_MS = 8000;
 
   function updateTranscriptionStatus(transcribing) {
     const statusBadge = $('statusBadge');
@@ -442,31 +439,13 @@ function startChunkedTranscription() {
       const rms = computeRMS(newAudioData);
       if (rms < 0.005) {
         lastChunkEndTime += newDuration;
-        const keepSamples = OVERLAP_SEC * 16000;
-        lastChunkAudioData = newAudioData.slice(-keepSamples);
         return;
       }
-
-      let audioToTranscribe;
-      if (lastChunkAudioData && lastChunkEndTime > 0) {
-        audioToTranscribe = new Float32Array(lastChunkAudioData.length + newAudioData.length);
-        audioToTranscribe.set(lastChunkAudioData, 0);
-        audioToTranscribe.set(newAudioData, lastChunkAudioData.length);
-      } else {
-        audioToTranscribe = new Float32Array(newAudioData);
-      }
-
-      const keepSamples = OVERLAP_SEC * 16000;
-      lastChunkAudioData = newAudioData.slice(-keepSamples);
 
       const transcribeOpts = currentMode === 'cloud'
         ? { cloudMode: true, apiKey: mimoApiKey }
         : {};
-      const result = await transcribe(audioToTranscribe, currentLanguage, transcribeOpts);
-
-      const baseTime = lastChunkEndTime > 0
-        ? Math.max(0, lastChunkEndTime - OVERLAP_SEC)
-        : 0;
+      const result = await transcribe(newAudioData, currentLanguage, transcribeOpts);
 
       if (result.chunks && result.chunks.length) {
         result.chunks.forEach(c => {
@@ -477,8 +456,8 @@ function startChunkedTranscription() {
             start = lastChunkEndTime;
             end = lastChunkEndTime + newDuration;
           } else {
-            start = baseTime + c.start;
-            end = baseTime + c.end;
+            start = lastChunkEndTime + c.start;
+            end = lastChunkEndTime + c.end;
           }
           if (start < lastChunkEndTime) return;
           const isDupe = currentSegments.some(s => {

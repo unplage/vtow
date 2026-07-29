@@ -85,10 +85,6 @@ function bindEvents() {
     btn.addEventListener('click', () => {
       const mode = btn.dataset.mode;
       if (mode === currentMode) return;
-      if (mode === 'cloud' && !mimoApiKey) {
-        showToast(getString('apiKeyRequired'));
-        return;
-      }
       document.querySelectorAll('.mode-option').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       currentMode = mode;
@@ -99,6 +95,8 @@ function bindEvents() {
           updateModelStatus('loading');
           loadModel(currentModelId);
         }
+      } else if (currentMode === 'cloud' && !mimoApiKey) {
+        showToast(getString('apiKeyRequired'));
       }
     });
   });

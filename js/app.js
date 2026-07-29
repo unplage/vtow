@@ -634,58 +634,38 @@ async function handleFileUpload(file) {
     if (progressFill) progressFill.style.width = '30%';
     const { audioData, duration } = await decodeAudioFile(file);
 
-    if (audioData.length / 16000 > 300) {
-      if (statusEl) statusEl.innerHTML = '⏳ 分块处理大文件...';
-      if (progressFill) progressFill.style.width = '40%';
-      const chunks = splitAudioChunks(audioData, 30, 5);
-      const allChunks = [];
-      let fullText = '';
+    if (statusEl) statusEl.innerHTML = '⏳ 分块处理...';
+    if (progressFill) progressFill.style.width = '40%';
+    const chunks = splitAudioChunks(audioData, 30, 5);
+    const allChunks = [];
+    let fullText = '';
 
-      for (let i = 0; i < chunks.length; i++) {
-        if (statusEl) statusEl.innerHTML = `⏳ 处理 ${i + 1}/${chunks.length}...`;
-        if (progressFill) progressFill.style.width = `${40 + (i / chunks.length) * 50}%`;
-        const result = await transcribe(chunks[i], currentLanguage, transcribeOpts);
-        if (result.chunks) {
-          const stepSec = 30 - 5;
-          const offset = i * stepSec;
-          result.chunks.forEach(c => {
-            allChunks.push({ start: offset + c.start, end: offset + c.end, text: c.text });
-          });
-        }
-        fullText += result.text + ' ';
+    for (let i = 0; i < chunks.length; i++) {
+      if (statusEl) statusEl.innerHTML = `⏳ 处理 ${i + 1}/${chunks.length}...`;
+      if (progressFill) progressFill.style.width = `${40 + (i / chunks.length) * 50}%`;
+      const result = await transcribe(chunks[i], currentLanguage, transcribeOpts);
+      if (result.chunks) {
+        const stepSec = 30 - 5;
+        const offset = i * stepSec;
+        result.chunks.forEach(c => {
+          allChunks.push({ start: offset + c.start, end: offset + c.end, text: c.text });
+        });
       }
-
-      const blob = new Blob([await file.arrayBuffer()], { type: file.type });
-      await addRecording({
-        audioBlob: blob,
-        transcript: fullText.trim(),
-        language: currentLanguage,
-        source: 'upload',
-        segments: allChunks,
-        model: currentModelId
-      });
-
-      currentSegments = allChunks;
-      updateLiveDisplay();
-
-    } else {
-      if (statusEl) statusEl.innerHTML = '🤖 识别中...';
-      if (progressFill) progressFill.style.width = '70%';
-      const result = await transcribe(audioData, currentLanguage, transcribeOpts);
-
-      const blob = new Blob([await file.arrayBuffer()], { type: file.type });
-      await addRecording({
-        audioBlob: blob,
-        transcript: result.text,
-        language: currentLanguage,
-        source: 'upload',
-        segments: result.chunks || [{ start: 0, end: duration, text: result.text }],
-        model: currentModelId
-      });
-
-      currentSegments = result.chunks || [{ start: 0, end: duration, text: result.text }];
-      updateLiveDisplay();
+      fullText += result.text + ' ';
     }
+
+    const blob = new Blob([await file.arrayBuffer()], { type: file.type });
+    await addRecording({
+      audioBlob: blob,
+      transcript: fullText.trim(),
+      language: currentLanguage,
+      source: 'upload',
+      segments: allChunks,
+      model: currentModelId
+    });
+
+    currentSegments = allChunks;
+    updateLiveDisplay();
 
     if (statusEl) statusEl.innerHTML = '✅ 完成';
     if (progressFill) progressFill.style.width = '100%';

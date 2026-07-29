@@ -470,10 +470,16 @@ function startChunkedTranscription() {
 
       if (result.chunks && result.chunks.length) {
         result.chunks.forEach(c => {
-          const start = baseTime + c.start;
-          const end = baseTime + c.end;
           const text = c.text.trim();
           if (!text) return;
+          let start, end;
+          if (currentMode === 'cloud') {
+            start = lastChunkEndTime;
+            end = lastChunkEndTime + newDuration;
+          } else {
+            start = baseTime + c.start;
+            end = baseTime + c.end;
+          }
           if (start < lastChunkEndTime) return;
           const isDupe = currentSegments.some(s => {
             const timeOverlap = Math.min(end, s.end) - Math.max(start, s.start);

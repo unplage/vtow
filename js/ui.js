@@ -115,7 +115,7 @@ const STRINGS = {
   }
 };
 
-let currentLang = localStorage.getItem('vtw-lang') || 'zh-CN';
+let currentLang = localStorage.getItem('vtw-lang') || 'auto';
 let currentTheme = localStorage.getItem('vtw-theme') || 'light';
 
 const listeners = [];

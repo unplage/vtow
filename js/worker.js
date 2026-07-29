@@ -154,6 +154,8 @@ let env = null;
 let modelId = 'Xenova/whisper-base';
 let asrPipeline = null;
 let _loadToken = 0;
+let _transcribeQueue = [];
+let _transcribing = false;
 
 const CDN_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.5/+esm';
 const CDN_FALLBACK = 'https://unpkg.com/@huggingface/transformers@3.7.5/+esm';
@@ -260,6 +262,30 @@ async function deleteCachedModel(modelId) {
   });
 }
 
+async function _processTranscribeQueue() {
+  if (_transcribing || _transcribeQueue.length === 0) return;
+  _transcribing = true;
+  const msg = _transcribeQueue.shift();
+  try {
+    const result = await transcribeAudio(msg.audioData, msg.language);
+    self.postMessage({
+      type: 'result',
+      text: result.text,
+      chunks: (result.chunks || []).map(c => ({
+        start: c.timestamp[0],
+        end: c.timestamp[1],
+        text: c.text
+      })),
+      id: msg.id
+    });
+  } catch (err) {
+    self.postMessage({ type: 'error', message: err.message, id: msg.id });
+  } finally {
+    _transcribing = false;
+    _processTranscribeQueue();
+  }
+}
+
 self.addEventListener('message', async (e) => {
   const msg = e.data;
   switch (msg.type) {
@@ -277,21 +303,8 @@ self.addEventListener('message', async (e) => {
       break;
 
     case 'transcribe':
-      try {
-        const result = await transcribeAudio(msg.audioData, msg.language);
-        self.postMessage({
-          type: 'result',
-          text: result.text,
-          chunks: (result.chunks || []).map(c => ({
-            start: c.timestamp[0],
-            end: c.timestamp[1],
-            text: c.text
-          })),
-          id: msg.id
-        });
-      } catch (err) {
-        self.postMessage({ type: 'error', message: err.message, id: msg.id });
-      }
+      _transcribeQueue.push(msg);
+      _processTranscribeQueue();
       break;
 
     case 'set-model':

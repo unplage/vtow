@@ -13,14 +13,29 @@ let currentSegments = [];
 let chunkTimer = null;
 let downloadTotalLoaded = 0;
 let downloadTotalSize = 0;
+let isTranscribing = false;
+let recordingStartTime = 0;
 
 function $(id) { return document.getElementById(id); }
+
+function initAudioMeter() {
+  const meter = $('audioMeter');
+  if (!meter) return;
+  const BAR_COUNT = 16;
+  for (let i = 0; i < BAR_COUNT; i++) {
+    const bar = document.createElement('div');
+    bar.className = 'audio-bar';
+    bar.style.height = '3px';
+    meter.appendChild(bar);
+  }
+}
 
 function init() {
   initTheme();
   initWorker();
   initHistory();
   bindEvents();
+  initAudioMeter();
   loadModel(currentModelId);
   updateModelStatus();
   updateLangUI();
@@ -273,6 +288,7 @@ async function startRecording() {
     await recorder.start();
     recorder.resetChunkIndex();
     isRecording = true;
+    recordingStartTime = Date.now() / 1000;
     updateControlUI();
     startChunkedTranscription();
   } catch (err) {
@@ -286,16 +302,21 @@ function startChunkedTranscription() {
   chunkTimer = setInterval(async () => {
     if (!isRecording || recorder.isPaused) return;
     if (!isReady()) return;
+    if (isTranscribing) return;
 
     const blob = recorder.getAndClearNewChunks();
     if (blob.size < 1000) return;
 
+    isTranscribing = true;
     try {
       const { audioData, duration } = await decodeAudioFileShared(blob);
       const result = await transcribe(audioData, currentLanguage);
 
+      recorder.acknowledgeChunks();
+
       if (result.chunks && result.chunks.length) {
-        const baseTime = Date.now() / 1000 - duration;
+        const elapsed = Date.now() / 1000 - recordingStartTime;
+        const baseTime = Math.max(0, elapsed - duration);
         result.chunks.forEach(c => {
           const start = baseTime + c.start;
           const end = baseTime + c.end;
@@ -313,12 +334,14 @@ function startChunkedTranscription() {
         });
         updateLiveDisplay();
       } else if (result.text && result.text.trim()) {
-        const now = Date.now() / 1000;
-        currentSegments.push({ start: now - 3, end: now, text: result.text.trim() });
+        const elapsed = Date.now() / 1000 - recordingStartTime;
+        currentSegments.push({ start: Math.max(0, elapsed - 3), end: elapsed, text: result.text.trim() });
         updateLiveDisplay();
       }
     } catch (err) {
       console.warn('实时转写失败:', err);
+    } finally {
+      isTranscribing = false;
     }
   }, CHUNK_MS);
 }
@@ -342,6 +365,7 @@ function stopRecording() {
     clearInterval(chunkTimer);
     chunkTimer = null;
   }
+  isTranscribing = false;
   recorder.stop();
   isRecording = false;
   updateControlUI();
@@ -357,6 +381,8 @@ function updateControlUI() {
     if (startBtn) startBtn.disabled = true;
     if (stopBtn) stopBtn.disabled = false;
     if (pauseBtn) pauseBtn.disabled = false;
+    const meter = $('audioMeter');
+    if (meter) meter.style.opacity = '1';
     if (statusBadge) {
       if (recorder.isPaused) {
         statusBadge.innerHTML = `<i class="fas fa-circle"></i> ${getString('statusPaused')}`;
@@ -376,6 +402,8 @@ function updateControlUI() {
       statusBadge.className = 'status-badge';
     }
     stopTimer();
+    const meter = $('audioMeter');
+    if (meter) meter.style.opacity = '0';
   }
 }
 

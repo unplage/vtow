@@ -5,6 +5,7 @@ let currentPage = 1;
 const PAGE_SIZE = 10;
 let allRecords = [];
 let filteredRecords = [];
+const activeAudio = new Map();
 
 export function initHistory() {
   refreshHistory();
@@ -53,6 +54,7 @@ function renderHistory() {
     const sourceLabel = rec.source === 'mic' ? getString('sourceMic') : getString('sourceUpload');
     const segs = rec.segments || [];
     const modelLabel = (rec.model || 'whisper-base').replace('Xenova/', '');
+    const isPlaying = activeAudio.has(rec.id) && !activeAudio.get(rec.id).audio.paused;
 
     let segsHtml = '';
     if (segs.length > 0) {
@@ -76,7 +78,7 @@ function renderHistory() {
       </div>
       <div class="history-segments">${segsHtml}</div>
       <div class="history-actions">
-        <button class="hist-btn" data-action="play" title="播放"><i class="fas fa-play"></i></button>
+        <button class="hist-btn" data-action="play" title="播放"><i class="fas fa-${isPlaying ? 'pause' : 'play'}"></i></button>
         <button class="hist-btn" data-action="edit" title="编辑"><i class="fas fa-pen"></i></button>
         <button class="hist-btn" data-action="srt" title="导出SRT"><i class="fas fa-closed-captioning"></i></button>
         <button class="hist-btn" data-action="txt" title="导出TXT"><i class="fas fa-file-alt"></i></button>
@@ -118,12 +120,31 @@ function bindHistoryEvents() {
     item.querySelector('[data-action="play"]')?.addEventListener('click', async (e) => {
       e.stopPropagation();
       const rec = filteredRecords.find(r => r.id === id);
-      if (rec?.audioBlob) {
-        const url = URL.createObjectURL(rec.audioBlob);
-        const audio = new Audio(url);
-        audio.play();
-        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      if (!rec?.audioBlob) return;
+
+      const existing = activeAudio.get(id);
+      if (existing) {
+        if (existing.audio.paused) {
+          existing.audio.play();
+          e.currentTarget.innerHTML = '<i class="fas fa-pause"></i>';
+        } else {
+          existing.audio.pause();
+          e.currentTarget.innerHTML = '<i class="fas fa-play"></i>';
+        }
+        return;
       }
+
+      const url = URL.createObjectURL(rec.audioBlob);
+      const audio = new Audio(url);
+      activeAudio.set(id, { audio, url });
+      e.currentTarget.innerHTML = '<i class="fas fa-pause"></i>';
+
+      audio.play();
+      audio.addEventListener('ended', () => {
+        e.currentTarget.innerHTML = '<i class="fas fa-play"></i>';
+        URL.revokeObjectURL(url);
+        activeAudio.delete(id);
+      });
     });
 
     item.querySelector('[data-action="txt"]')?.addEventListener('click', (e) => {

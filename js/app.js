@@ -623,7 +623,7 @@ async function handleFileUpload(file) {
 
   const transcribeOpts = currentMode === 'cloud'
     ? { cloudMode: true, apiKey: mimoApiKey }
-    : {};
+    : { timeout: 1800000 };
 
   if (statusEl) statusEl.innerHTML = `📁 ${file.name}`;
   if (progressContainer) progressContainer.style.display = 'block';

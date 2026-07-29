@@ -1,6 +1,6 @@
 const MIMO_API_URL = 'https://api.xiaomimimo.com/v1/chat/completions';
 const MIMO_MODEL = 'mimo-v2.5-asr';
-const CLOUD_TIMEOUT = 60000;
+const CLOUD_TIMEOUT = 1200000;
 
 function floatToWavBase64(audioData, sampleRate = 16000) {
   const numChannels = 1;

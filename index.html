@@ -51,7 +51,21 @@
             <button class="mode-option" data-mode="cloud">☁️ <span data-i18n="modeCloud">云端</span></button>
         </div>
         <div class="api-key-section hidden" id="apiKeySection">
-            <input type="password" id="apiKeyInput" class="api-key-input" placeholder="sk-xxxxx (MiMo API Key)">
+            <select id="providerSelect" class="api-key-input">
+                <option value="mimo">MiMo</option>
+                <option value="siliconflow">硅基流动 SiliconFlow</option>
+                <option value="custom">自定义 Custom</option>
+            </select>
+            <input type="password" id="apiKeyInput" class="api-key-input" placeholder="sk-xxxxx (API Key)">
+            <input type="text" id="apiBaseInput" class="api-key-input" placeholder="API 地址 (Base URL)">
+            <input type="text" id="modelNameInput" class="api-key-input" placeholder="模型名称">
+            <div class="api-type-row hidden" id="apiTypeRow">
+                <label for="apiTypeSelect">接口类型</label>
+                <select id="apiTypeSelect" class="api-key-input">
+                    <option value="transcriptions">OpenAI /audio/transcriptions</option>
+                    <option value="chat">chat/completions (音频)</option>
+                </select>
+            </div>
             <button class="api-key-save-btn" id="saveApiKeyBtn">保存</button>
         </div>
 
@@ -61,6 +75,8 @@
             <button class="model-option" data-model="Xenova/whisper-small">Small</button>
             <button class="model-option" data-model="Xenova/whisper-large-v3-turbo">Turbo</button>
             <button class="model-option" data-model="mimo-v2.5-asr">MiMo ☁️</button>
+            <button class="model-option" data-model="FunAudioLLM/SenseVoiceSmall">硅基 ☁️</button>
+            <button class="model-option" data-model="custom">自定义 ☁️</button>
         </div>
         <div class="model-status" id="modelStatus">⚡ <span data-i18n="modelLoading">模型加载中</span>...</div>
 

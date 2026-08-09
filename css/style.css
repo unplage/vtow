@@ -274,11 +274,13 @@ body {
 /* Model selector */
 .model-selector {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 0 24px 12px;
 }
 .model-option {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 64px;
   text-align: center;
   padding: 6px 4px;
   font-size: 0.8rem;
@@ -349,9 +351,10 @@ body {
 /* API Key section */
 .api-key-section {
   display: flex;
+  flex-direction: column;
   gap: 8px;
   padding: 0 24px 8px;
-  align-items: center;
+  align-items: stretch;
 }
 .api-key-section.hidden { display: none; }
 .api-key-input {
@@ -364,6 +367,9 @@ body {
   color: var(--text);
   outline: none;
   transition: border-color 0.2s;
+}
+select.api-key-input {
+  cursor: pointer;
 }
 .api-key-input:focus { border-color: var(--primary); }
 .api-key-save-btn {
@@ -379,6 +385,14 @@ body {
   white-space: nowrap;
 }
 .api-key-save-btn:active { opacity: 0.8; }
+.api-type-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+.api-type-row.hidden { display: none; }
 
 /* Upload area */
 .upload-area {

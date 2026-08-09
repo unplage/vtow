@@ -96,8 +96,14 @@ export function isLoadFailed() {
 }
 
 export function transcribe(audioData, language, options = {}) {
-  if (options.cloudMode && options.apiKey) {
-    return transcribeCloud(audioData, language, options.apiKey, { timeout: options.timeout });
+  if (options.cloudMode) {
+    return transcribeCloud(audioData, language, {
+      apiKey: options.apiKey,
+      apiBase: options.apiBase,
+      model: options.model,
+      apiType: options.apiType,
+      timeout: options.timeout
+    });
   }
 
   const id = ++msgId;

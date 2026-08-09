@@ -1,6 +1,7 @@
 import { Recorder } from './recorder.js';
 import { decodeAudioFile, decodeAudioFileShared, getSharedAudioContext, splitAudioChunks, validateAudioFile } from './uploader.js';
 import { initWorker, loadModel, transcribe, isReady, getCurrentModel, isDownloadableModel, getDownloadSize, checkModelCache, clearModelCache, abortTranscription } from './transcription.js';
+import { getProviderConfig } from './cloud.js';
 import { addRecording, getAllRecordings } from './storage.js';
 import { initHistory, refreshHistory, filterHistory, exportAll } from './history.js';
 import { getString, getLang, setLang, getTheme, setTheme, toggleTheme, initTheme, showToast, formatTime, escapeHtml, onLangChange, MODELS, showConfirmDialog, showDownloadDialog, hideDownloadDialog, updateDownloadProgress } from './ui.js';
@@ -19,7 +20,77 @@ let lastChunkEndTime = 0;
 let totalDecodedSamples = 0;
 let lastRenderedCount = 0;
 let currentMode = localStorage.getItem('vtw-mode') || 'local';
-let mimoApiKey = localStorage.getItem('vtw-mimo-key') || '';
+let currentProvider = localStorage.getItem('vtw-provider') || 'mimo';
+
+const CLOUD_STORAGE = {
+  mimo: { keyKey: 'vtw-mimo-key', baseKey: 'vtw-base-mimo', modelKey: 'vtw-model-mimo' },
+  siliconflow: { keyKey: 'vtw-siliconflow-key', baseKey: 'vtw-base-siliconflow', modelKey: 'vtw-model-siliconflow' },
+  custom: { keyKey: 'vtw-custom-key', baseKey: 'vtw-base-custom', modelKey: 'vtw-model-custom' }
+};
+
+const CLOUD_MODEL_TO_PROVIDER = {
+  'mimo-v2.5-asr': 'mimo',
+  'FunAudioLLM/SenseVoiceSmall': 'siliconflow',
+  'custom': 'custom'
+};
+
+function getCloudKey(providerId) {
+  const cfg = CLOUD_STORAGE[providerId];
+  return cfg ? (localStorage.getItem(cfg.keyKey) || '') : '';
+}
+
+function setCloudKey(providerId, value) {
+  const cfg = CLOUD_STORAGE[providerId];
+  if (cfg) localStorage.setItem(cfg.keyKey, value);
+}
+
+function getCloudBase(providerId) {
+  const cfg = CLOUD_STORAGE[providerId];
+  const saved = cfg ? localStorage.getItem(cfg.baseKey) : '';
+  return saved || (getProviderConfig(providerId).apiBase || '');
+}
+
+function setCloudBase(providerId, value) {
+  const cfg = CLOUD_STORAGE[providerId];
+  if (!cfg) return;
+  if (value) localStorage.setItem(cfg.baseKey, value);
+  else localStorage.removeItem(cfg.baseKey);
+}
+
+function getCloudModel(providerId) {
+  const cfg = CLOUD_STORAGE[providerId];
+  const saved = cfg ? localStorage.getItem(cfg.modelKey) : '';
+  return saved || (getProviderConfig(providerId).defaultModel || '');
+}
+
+function setCloudModel(providerId, value) {
+  const cfg = CLOUD_STORAGE[providerId];
+  if (!cfg) return;
+  if (value) localStorage.setItem(cfg.modelKey, value);
+  else localStorage.removeItem(cfg.modelKey);
+}
+
+function getCloudApiType(providerId) {
+  if (providerId === 'custom') {
+    return localStorage.getItem('vtw-type-custom') || 'transcriptions';
+  }
+  return getProviderConfig(providerId).apiType || 'chat';
+}
+
+function getEffectiveModel() {
+  if (currentMode === 'cloud') return getCloudModel(currentProvider);
+  return currentModelId;
+}
+
+function getCloudTranscribeOpts() {
+  return {
+    cloudMode: true,
+    apiKey: getCloudKey(currentProvider),
+    apiBase: getCloudBase(currentProvider),
+    model: getCloudModel(currentProvider),
+    apiType: getCloudApiType(currentProvider)
+  };
+}
 
 function $(id) { return document.getElementById(id); }
 
@@ -46,6 +117,10 @@ function initAudioMeter() {
 function init() {
   initTheme();
   if (currentMode === 'local') {
+    if (CLOUD_MODEL_TO_PROVIDER[currentModelId]) {
+      currentModelId = 'Xenova/whisper-tiny';
+      localStorage.setItem('vtw-model', currentModelId);
+    }
     initWorker();
     loadModel(currentModelId);
   }
@@ -58,7 +133,7 @@ function init() {
   updateModelSelect();
   updateOnlineStatus();
   updateModeUI();
-  updateApiKeyUI();
+  updateCloudConfigUI();
   window.addEventListener('online', updateOnlineStatus);
   window.addEventListener('offline', updateOnlineStatus);
 }
@@ -90,23 +165,46 @@ function bindEvents() {
       localStorage.setItem('vtw-mode', currentMode);
       updateModeUI();
       if (currentMode === 'local') {
+        if (CLOUD_MODEL_TO_PROVIDER[currentModelId]) {
+          currentModelId = 'Xenova/whisper-tiny';
+          localStorage.setItem('vtw-model', currentModelId);
+          updateModelSelect();
+        }
         if (!isReady()) {
           updateModelStatus('loading');
           loadModel(currentModelId);
         }
-      } else if (currentMode === 'cloud' && !mimoApiKey) {
-        showToast(getString('apiKeyRequired'));
+      } else if (currentMode === 'cloud' && !isCloudReady()) {
+        showToast(getString('cloudConfigRequired'));
       }
     });
   });
+
+  const providerSelect = $('providerSelect');
+  const apiBaseInput = $('apiBaseInput');
+  const modelNameInput = $('modelNameInput');
+  const apiTypeSelect = $('apiTypeSelect');
+
+  if (providerSelect) {
+    providerSelect.addEventListener('change', () => {
+      currentProvider = providerSelect.value;
+      localStorage.setItem('vtw-provider', currentProvider);
+      updateCloudConfigUI();
+    });
+  }
 
   if (saveApiKeyBtn && apiKeyInput) {
     saveApiKeyBtn.addEventListener('click', () => {
       const key = apiKeyInput.value.trim();
       if (!key) return;
-      mimoApiKey = key;
-      localStorage.setItem('vtw-mimo-key', mimoApiKey);
+      setCloudKey(currentProvider, key);
+      setCloudBase(currentProvider, (apiBaseInput ? apiBaseInput.value.trim() : ''));
+      setCloudModel(currentProvider, (modelNameInput ? modelNameInput.value.trim() : ''));
+      if (currentProvider === 'custom' && apiTypeSelect) {
+        localStorage.setItem('vtw-type-custom', apiTypeSelect.value);
+      }
       showToast(getString('apiKeySaved'));
+      updateCloudConfigUI();
     });
     apiKeyInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') saveApiKeyBtn.click();
@@ -157,10 +255,13 @@ function bindEvents() {
       const modelId = btn.dataset.model;
       if (modelId === currentModelId) return;
 
-      if (modelId === 'mimo-v2.5-asr') {
-        if (!mimoApiKey) {
-          showToast(getString('apiKeyRequired'));
-          return;
+      const providerId = CLOUD_MODEL_TO_PROVIDER[modelId];
+
+      if (providerId) {
+        currentProvider = providerId;
+        localStorage.setItem('vtw-provider', currentProvider);
+        if (!isCloudReady()) {
+          showToast(getString('cloudConfigRequired'));
         }
         document.querySelectorAll('.model-option').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
@@ -169,6 +270,7 @@ function bindEvents() {
         localStorage.setItem('vtw-model', currentModelId);
         localStorage.setItem('vtw-mode', currentMode);
         updateModeUI();
+        updateCloudConfigUI();
         updateModelStatus('ready');
         return;
       }
@@ -277,7 +379,9 @@ function updateModelStatus(state, progressOrMsg) {
   if (!el) return;
 
   if (currentMode === 'cloud') {
-    el.innerHTML = `<span class="model-loading-icon">☁️</span> MiMo Cloud · ${mimoApiKey ? '✅ 已配置' : '❌ 需要 API Key'}`;
+    const provider = getProviderConfig(currentProvider);
+    const ready = isCloudReady();
+    el.innerHTML = `<span class="model-loading-icon">☁️</span> ${escapeHtml(provider.name)} · ${ready ? '✅ ' + escapeHtml(getString('cloudReady')) : '❌ ' + escapeHtml(getString('cloudNeedKey'))}`;
     el.className = 'model-status model-ready';
     return;
   }
@@ -329,12 +433,23 @@ function updateModeUI() {
   if (apiKeySection) {
     apiKeySection.classList.toggle('hidden', currentMode !== 'cloud');
   }
+  updateCloudConfigUI();
   updateModelStatus();
 }
 
-function updateApiKeyUI() {
+function updateCloudConfigUI() {
+  const providerSelect = $('providerSelect');
   const input = $('apiKeyInput');
-  if (input) input.value = mimoApiKey;
+  const baseInput = $('apiBaseInput');
+  const modelInput = $('modelNameInput');
+  const typeRow = $('apiTypeRow');
+  const typeSelect = $('apiTypeSelect');
+  if (providerSelect) providerSelect.value = currentProvider;
+  if (input) input.value = getCloudKey(currentProvider);
+  if (baseInput) baseInput.value = getCloudBase(currentProvider);
+  if (modelInput) modelInput.value = getCloudModel(currentProvider);
+  if (typeSelect) typeSelect.value = getCloudApiType(currentProvider);
+  if (typeRow) typeRow.classList.toggle('hidden', currentProvider !== 'custom');
 }
 
 function updateOnlineStatus() {
@@ -346,7 +461,8 @@ function updateOnlineStatus() {
 }
 
 function isCloudReady() {
-  return currentMode === 'cloud' && !!mimoApiKey;
+  if (currentMode !== 'cloud') return false;
+  return !!(getCloudKey(currentProvider) && getCloudBase(currentProvider) && getCloudModel(currentProvider));
 }
 
 async function startRecording() {
@@ -357,7 +473,7 @@ async function startRecording() {
     return;
   }
   if (currentMode === 'cloud' && !isCloudReady()) {
-    showToast(getString('apiKeyRequired'));
+    showToast(getString('cloudConfigRequired'));
     return;
   }
 
@@ -373,7 +489,7 @@ async function startRecording() {
           language: currentLanguage,
           source: 'mic',
           segments: currentSegments,
-          model: currentModelId
+          model: getEffectiveModel()
         });
         showToast('已保存到历史记录');
         refreshHistory();
@@ -443,7 +559,7 @@ function startChunkedTranscription() {
       }
 
       const transcribeOpts = currentMode === 'cloud'
-        ? { cloudMode: true, apiKey: mimoApiKey }
+        ? getCloudTranscribeOpts()
         : {};
       const result = await transcribe(newAudioData, currentLanguage, transcribeOpts);
 
@@ -613,7 +729,7 @@ async function handleFileUpload(file) {
     return;
   }
   if (currentMode === 'cloud' && !isCloudReady()) {
-    showToast(getString('apiKeyRequired'));
+    showToast(getString('cloudConfigRequired'));
     return;
   }
 
@@ -622,7 +738,7 @@ async function handleFileUpload(file) {
   const progressFill = $('progressFill');
 
   const transcribeOpts = currentMode === 'cloud'
-    ? { cloudMode: true, apiKey: mimoApiKey }
+    ? { ...getCloudTranscribeOpts(), timeout: 1800000 }
     : { timeout: 1800000 };
 
   if (statusEl) statusEl.innerHTML = `📁 ${file.name}`;
@@ -661,7 +777,7 @@ async function handleFileUpload(file) {
       language: currentLanguage,
       source: 'upload',
       segments: allChunks,
-      model: currentModelId
+      model: getEffectiveModel()
     });
 
     currentSegments = allChunks;
